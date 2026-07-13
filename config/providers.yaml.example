@@ -1,0 +1,64 @@
+# Cincai starter catalog — one pattern per adapter (chat + media).
+# Copy to config/providers.yaml. Model pools: docs/routing.md
+#
+# Naming: docs/catalog-capabilities-modalities.md
+# Inject: docs/catalog-inject.md
+
+providers:
+  # passthrough (API key: deepseek-api)
+  deepseek:
+    credential_profile: deepseek-api
+    capabilities:
+      chat:
+        protocol: openai-chat-completions
+        base_url: https://api.deepseek.com
+
+  # xai image adapter + openai-videos passthrough (OAuth: xai)
+  xai:
+    credential_profile: xai
+    capabilities:
+      image_gen:
+        adapter: xai
+        base_url: https://api.x.ai/v1/images
+      video_gen:
+        protocol: openai-videos
+        base_url: https://api.x.ai/v1/videos
+
+  # elevenlabs TTS (API key: elevenlabs-api)
+  elevenlabs:
+    credential_profile: elevenlabs-api
+    capabilities:
+      speech_gen:
+        adapter: elevenlabs
+        base_url: https://api.elevenlabs.io
+
+models:
+  deepseek-v4-flash:
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        provider_ref: deepseek
+      # Serve /v1/messages from an OpenAI-protocol upstream: the catalog injects
+      # the wire-translate adapter when ingress wire != upstream protocol.
+      anthropic_chat:
+        wire: anthropic-messages
+        provider_ref: deepseek
+
+  grok-imagine-image-quality:
+    modalities:
+      image_gen:
+        wire: openai-images-generations
+        provider_ref: xai
+
+  grok-imagine-video:
+    modalities:
+      video_gen:
+        wire: openai-videos
+        provider_ref: xai
+
+  eleven_v3:
+    modalities:
+      speech_gen:
+        wire: openai-audio-speech
+        provider_ref: elevenlabs
+        model: eleven_v3

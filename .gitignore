@@ -1,0 +1,18 @@
+.envrc
+.devenv/
+.direnv/
+
+# Local config + data
+config/cincai.yaml
+config/providers.yaml
+config/cincai.dev.env
+data/
+
+# Go
+/bin/
+go.work
+go.work.sum
+*.log
+
+# Local-only notes, not part of the published project.
+/docs-internal/

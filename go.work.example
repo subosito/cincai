@@ -1,0 +1,8 @@
+// Optional local workspace (gitignored). cincai builds standalone; use this only
+// to develop it alongside other local Go modules.
+//
+//   cp go.work.example go.work
+
+go 1.26.4
+
+use .

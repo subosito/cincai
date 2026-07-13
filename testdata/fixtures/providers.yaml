@@ -1,0 +1,18 @@
+providers:
+  mock:
+    credential_profile: mock
+    surfaces:
+      chat:
+        protocol: openai-chat-completions
+        base_url: http://127.0.0.1:19998
+
+models:
+  mock-chat:
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        strategy: failover
+        providers:
+          - provider_ref: mock
+            surface: chat
+            model: echo-model
