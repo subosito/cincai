@@ -10,7 +10,7 @@ func TestCopyInjectFieldsMap(t *testing.T) {
 	entry := map[string]any{
 		"inject_preset": "bearer",
 		"inject": map[string]any{
-			"Authorization": "Bearer ${access}",
+			"Authorization":      "Bearer ${access}",
 			"chatgpt-account-id": "${accountId}",
 		},
 	}

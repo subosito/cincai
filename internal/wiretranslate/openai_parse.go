@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/subosito/cincai/internal/wiretranslate/sse"
 	"github.com/subosito/cincai/adaptersdk/messages"
+	"github.com/subosito/cincai/internal/wiretranslate/sse"
 )
 
 func parseOpenAIStream(r io.Reader, fn func(messages.StreamEvent) error) error {

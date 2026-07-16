@@ -22,6 +22,26 @@ func TestNewRegistryInitialized(t *testing.T) {
 	}
 }
 
+func TestRegisteredProtocolsAndAdapters(t *testing.T) {
+	reg := adaptersdk.NewRegistry()
+	if err := passthrough.New().Register(reg); err != nil {
+		t.Fatal(err)
+	}
+	protos := adaptersdk.RegisteredProtocols(reg)
+	for _, want := range []string{"openai-chat-completions", "anthropic-messages", "openai-videos", "openai-tts"} {
+		if !protos[want] {
+			t.Errorf("protocol %q not reported as registered", want)
+		}
+	}
+	// passthrough registers protocol handlers only, never translate adapters.
+	if got := adaptersdk.RegisteredAdapters(reg); len(got) != 0 {
+		t.Errorf("expected no translate adapters, got %v", got)
+	}
+	if got := len(adaptersdk.RegisteredProtocols(nil)); got != 0 {
+		t.Errorf("nil registry should report nothing, got %d", got)
+	}
+}
+
 func TestRegistryLookupAndDispatch(t *testing.T) {
 	reg := adaptersdk.NewRegistry()
 	if err := passthrough.New().Register(reg); err != nil {

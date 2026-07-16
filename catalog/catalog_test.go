@@ -163,6 +163,30 @@ func TestListModels(t *testing.T) {
 	if list.Data[0].Object != "model" || list.Data[0].OwnedBy != "cincai" {
 		t.Fatalf("item=%+v", list.Data[0])
 	}
+	// created is required by the OpenAI model schema; it used to always marshal 0,
+	// telling clients every model was published on 1970-01-01.
+	if list.Data[0].Created <= 0 {
+		t.Fatalf("created=%d, want a real unix timestamp", list.Data[0].Created)
+	}
+	// Wire metadata for clients (mow) — preferred chat wire + all wires.
+	if list.Data[0].Wire == "" {
+		t.Fatalf("expected preferred wire, item=%+v", list.Data[0])
+	}
+	if len(list.Data[0].Wires) == 0 {
+		t.Fatalf("expected wires[], item=%+v", list.Data[0])
+	}
+}
+
+func TestPreferredChatWire(t *testing.T) {
+	if got := catalog.PreferredChatWire([]string{catalog.WireAnthropicMsg, catalog.WireOpenAIChat}); got != catalog.WireOpenAIChat {
+		t.Fatalf("prefer chat-completions, got %q", got)
+	}
+	if got := catalog.PreferredChatWire([]string{catalog.WireAnthropicMsg}); got != catalog.WireAnthropicMsg {
+		t.Fatalf("got %q", got)
+	}
+	if got := catalog.PreferredChatWire(nil); got != "" {
+		t.Fatalf("got %q", got)
+	}
 }
 
 func TestWireForPathResponses(t *testing.T) {
@@ -302,7 +326,8 @@ models:
 	}
 }
 
-func TestDuplicateWireRejected(t *testing.T) {
+func TestDuplicateWireExpandedToFacets(t *testing.T) {
+	// Same wire under one authoring id expands: bare m keeps chat; alt_chat → m:alt_chat.
 	raw := `
 providers:
   p:
@@ -333,9 +358,19 @@ models:
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cat.Resolve("m", catalog.WireOpenAIChat)
-	if err == nil {
-		t.Fatal("expected duplicate wire error")
+	plan, err := cat.Resolve("m", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatalf("bare after expand: %v", err)
+	}
+	if plan.Targets[0].UpstreamModel != "x" {
+		t.Fatalf("bare model=%q want x", plan.Targets[0].UpstreamModel)
+	}
+	plan, err = cat.Resolve("m:alt_chat", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatalf("facet: %v", err)
+	}
+	if plan.Targets[0].UpstreamModel != "y" {
+		t.Fatalf("facet model=%q want y", plan.Targets[0].UpstreamModel)
 	}
 }
 

@@ -1,4 +1,5 @@
-// Package observability provides ingress structured logs and optional OpenTelemetry export.
+// Package observability provides ingress structured logs, optional OpenTelemetry
+// export, and optional host attribution (semantic slots; default wire X-Cincai-*).
 //
 // Every data-plane request emits one JSON line on stderr (no secrets). Spans and
 // metrics are noop until the process initializes OTel.

@@ -15,7 +15,7 @@ smoke_create_gateway_key smoke-speech
 echo "== credential import =="
 ./bin/cincai credential import elevenlabs-api \
   --api-key "${SMOKE_ELEVENLABS_API_KEY:-el-smoke-fake}" \
-  --config config/cincai.yaml
+  --config "$CONFIG"
 
 echo "== serve =="
 smoke_serve

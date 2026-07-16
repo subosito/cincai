@@ -50,9 +50,11 @@ models:
       chat:
         wire: openai-responses
         provider_ref: xai
+        surface: responses
       image:
         wire: openai-responses
         provider_ref: xai
+        surface: responses
 `
 	if err := os.WriteFile(path, []byte(yamlDoc), 0o644); err != nil {
 		t.Fatal(err)
@@ -61,11 +63,15 @@ models:
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := cat.ResolveWithModality("grok-4.3", corecatalog.WireOpenAIResponses, "image")
+	// Same-wire multi-modality expands: image is public id grok-4.3:image.
+	plan, err := cat.Resolve("grok-4.3:image", corecatalog.WireOpenAIResponses)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Targets) == 0 || plan.Targets[0].ProviderRef != "xai" {
 		t.Fatalf("targets=%+v", plan.Targets)
+	}
+	if _, err := cat.Resolve("grok-4.3", corecatalog.WireOpenAIResponses); err != nil {
+		t.Fatalf("bare chat: %v", err)
 	}
 }

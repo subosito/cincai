@@ -52,24 +52,23 @@ adapters:
     - wire-translate
     - xai
     - elevenlabs
+    - mistral
 ```
 
-The minimal `providers.yaml.example` uses one provider per adapter pattern (not every driver). Add providers/models and pools as needed.
+The bundled pack is exactly these five drivers; `providers.yaml.example` shows one provider per adapter pattern. Add providers/models and pools as needed.
 
 - **passthrough** — relay when ingress wire matches upstream protocol
 - **wire-translate** — OpenAI ↔ Anthropic protocol conversion
-- Named adapters — vendor-specific translate/normalize (image, speech, …)
+- **xai** — image generation
+- **elevenlabs** — speech generation
+- **mistral** — chat, and OCR translated onto the chat wire
 
-
-Omit an adapter here and catalog entries that reference it will fail at route time.
+Naming a driver here that no linked adapter provides is an error at startup, so a
+typo fails fast rather than at route time. Enabling a driver you have no catalog
+entry for is harmless. `cincai catalog validate` checks both directions: it fails
+if `providers.yaml` names a protocol or adapter that no enabled driver registers.
 
 Adapters beyond the bundled pack are registered with `pack.RegisterAdapter` and composed into your own operator binary; nothing else in `cincai.yaml` changes.
-
-### `ingress`
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `client_auth` | `keyring` | How clients authenticate (`Authorization: Bearer` gateway keys) |
 
 ---
 

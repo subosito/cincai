@@ -5,11 +5,11 @@ Cincai knows which of *your* providers can serve it — under whatever name each
 one uses — and applies your **policy**. You never wire up providers per request.
 
 ```
-client:   POST /v1/chat/completions   {"model": "glm-5.2", ...}
+client:   POST /v1/chat/completions   {"model": "example-model", ...}
              │
-cincai:   model glm-5.2  →  pool [zhipu, openrouter, fireworks]  →  strategy
+cincai:   model example-model  →  pool [vendor, openrouter, fireworks]  →  strategy
              │                                                     │
-           zhipu: "glm-5.2"   openrouter: "z-ai/glm-5.2"   fireworks: "accounts/…/glm-5.2"
+     vendor: "example-model"   openrouter: "vendor/example-model"   fireworks: "accounts/…/example-model"
 ```
 
 ## The three pieces
@@ -18,21 +18,21 @@ A model's modality is a **pool** of providers plus a **strategy**:
 
 ```yaml
 models:
-  glm-5.2:
+  example-model:
     modalities:
       chat:
         wire: openai-chat-completions
         strategy: failover          # or round_robin
         providers:
-          - provider_ref: zhipu       # native name
-            model: glm-5.2
+          - provider_ref: vendor      # the model's own API
+            model: example-model
           - provider_ref: openrouter  # same model, different upstream name
-            model: z-ai/glm-5.2
+            model: vendor/example-model
           - provider_ref: fireworks
-            model: zhipu/glm-5.2
+            model: accounts/vendor/models/example-model
 ```
 
-1. **Canonical id** (`glm-5.2`) — what the client asks for. Stable across providers.
+1. **Canonical id** (`example-model`) — what the client asks for. Stable across providers.
 2. **Per-provider name mapping** (`model:`) — each upstream calls it something
    different; Cincai substitutes the right name before forwarding.
 3. **Strategy** —
@@ -46,7 +46,7 @@ Wire translation still applies underneath: hit `/v1/chat/completions` or
 ## Why the catalog matters
 
 Pools, failover, and round-robin are table stakes. What makes `base_url + model`
-*just work* is the **catalog** — knowing that `glm-5.2` maps to these providers
+*just work* is the **catalog** — knowing that one canonical id maps to these providers
 under these upstream names with sane defaults.
 Cincai ships a starter catalog (`config/providers.yaml.example`); full pool examples are in this doc. You maintain `config/providers.yaml` for your deployment.
 

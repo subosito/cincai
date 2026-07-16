@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	"github.com/subosito/cincai/adaptersdk"
-	"github.com/subosito/cincai/passthrough"
 	"github.com/subosito/cincai/catalog"
-	"github.com/subosito/cincai/internal/testfixture"
 	"github.com/subosito/cincai/credential/seal"
 	"github.com/subosito/cincai/credential/store"
 	"github.com/subosito/cincai/ingress/keyring"
+	"github.com/subosito/cincai/internal/testfixture"
+	"github.com/subosito/cincai/passthrough"
 	"github.com/subosito/cincai/upstream"
 	"github.com/subosito/cincai/wire"
 )
@@ -70,7 +70,7 @@ models:
 
 	engine := &wire.Engine{
 		Catalog: cat, Store: st, Adapters: reg,
-		Auth: &keyring.Authenticator{Store: ks},
+		Auth:   &keyring.Authenticator{Store: ks},
 		Client: upstream.NewClient(),
 	}
 	ts := httptest.NewServer(engine.Handler())
@@ -141,7 +141,7 @@ models:
 
 	engine := &wire.Engine{
 		Catalog: cat, Store: st, Adapters: reg,
-		Auth: &keyring.Authenticator{Store: ks},
+		Auth:   &keyring.Authenticator{Store: ks},
 		Client: upstream.NewClient(),
 	}
 	ts := httptest.NewServer(engine.Handler())

@@ -1,14 +1,18 @@
 # CLAUDE.md — working in the cincai repo
 
-Cincai is a model-oriented AI gateway: a client asks for a *model* (e.g. `glm-5.2`) at
+Cincai is a model-oriented AI gateway: a client asks for a *model* by name at
 one OpenAI-compatible endpoint, and cincai routes to whichever configured provider can
 serve it — API keys or subscription OAuth — with load-balancing, failover, and
 OpenAI↔Anthropic wire translation. Chat, image, video, and speech.
 
 ## Build, test, run
 
-Requires **Go 1.26.4+** (pinned in `go.mod` and `go.work`; `devenv shell` provides it).
-If your shell Go is older than the pin, prefix commands with `GOTOOLCHAIN=go1.26.4`.
+Requires **Go 1.26.4+**, pinned by the `go` directive in `go.mod` (and `go.work.example`,
+if you use a local workspace). `devenv shell` provides it from nixpkgs and sets
+`GOTOOLCHAIN=local`, so the toolchain is whatever `devenv.lock` pins — no downloads.
+If the locked nixpkgs ever drops below the `go.mod` floor, builds fail outright
+(`go.mod requires go >= …; GOTOOLCHAIN=local`); fix with `devenv update nixpkgs`.
+Outside devenv, use a 1.26.4+ Go, or prefix commands with `GOTOOLCHAIN=go1.26.4`.
 
 ```bash
 just verify         # go vet + go test ./...  — run before committing
@@ -69,6 +73,6 @@ gateway key) → **scope check** (`keyring.Authorize`) → **catalog resolve**
   are gitignored — only the `*.example` templates are tracked. Never commit real config
   or a broker.
 - `go.work` is gitignored; copy `go.work.example` for a local multi-module workspace.
-- The smoke scripts (`scripts/smoke-*.sh`) write to a `broker.db` and copy example
-  configs over `config/*.yaml`; run them against a scratch directory, not a real
-  deployment's config/broker.
+- The smoke scripts (`scripts/smoke-*.sh`) stage their config and broker in a `mktemp`
+  directory and remove it on exit, so they never touch `config/*.yaml` or a real broker.
+  Keep it that way: pass `--config "$CONFIG"`, never a path under `config/`.

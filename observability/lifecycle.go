@@ -9,7 +9,12 @@ import (
 // Boot initializes OTLP export for a standalone cincai process (CLI / operator binary).
 // Library embedders must not call Boot — use Hook after the host app observability Boot.
 func Boot(serviceName string) {
-	if _, err := Init(serviceName); err != nil {
+	BootWithPrefix(serviceName, DefaultMetricPrefix)
+}
+
+// BootWithPrefix is like Boot but sets the metric name prefix (e.g. "chacha").
+func BootWithPrefix(serviceName, metricPrefix string) {
+	if _, err := InitWithPrefix(serviceName, metricPrefix); err != nil {
 		slog.Error("observability: init failed", "service", serviceName, "err", err)
 	}
 }

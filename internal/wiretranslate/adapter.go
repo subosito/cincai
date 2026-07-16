@@ -11,11 +11,11 @@ import (
 
 	"github.com/subosito/cincai/adaptersdk"
 	"github.com/subosito/cincai/adaptersdk/handler"
+	"github.com/subosito/cincai/adaptersdk/messages"
+	"github.com/subosito/cincai/adaptersdk/upstreamauth"
 	cincaicatalog "github.com/subosito/cincai/internal/catalog"
 	"github.com/subosito/cincai/observability"
 	"github.com/subosito/cincai/upstream"
-	"github.com/subosito/cincai/adaptersdk/messages"
-	"github.com/subosito/cincai/adaptersdk/upstreamauth"
 )
 
 // Adapter registers wire-translate chat handlers.
@@ -143,35 +143,7 @@ func relayPOST(ctx context.Context, client *http.Client, t handler.Target, path 
 	return observability.HTTPDo(ctx, client, req)
 }
 
-func translateOpenAIStreamToAnthropic(r io.Reader, model string) (*http.Response, error) {
-	var events []messages.StreamEvent
-	if err := parseOpenAIStream(r, func(ev messages.StreamEvent) error {
-		events = append(events, ev)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	body, err := encodeAnthropicSSE(events, model)
-	if err != nil {
-		return nil, err
-	}
-	return sseResponse(body), nil
-}
-
-func translateAnthropicStreamToOpenAI(r io.Reader, model string) (*http.Response, error) {
-	var events []messages.StreamEvent
-	if err := parseAnthropicStream(r, func(ev messages.StreamEvent) error {
-		events = append(events, ev)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	body, err := encodeOpenAISSE(events, model)
-	if err != nil {
-		return nil, err
-	}
-	return openaiSSEResponse(body), nil
-}
+// Stream translate implementations live in stream_pipe.go (incremental io.Pipe).
 
 func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 	var msg struct {
@@ -252,18 +224,18 @@ func jsonResponse(body []byte) *http.Response {
 	}
 }
 
-func sseResponse(body []byte) *http.Response {
+func sseResponse(body io.Reader) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		Body:       io.NopCloser(body),
 	}
 }
 
-func openaiSSEResponse(body []byte) *http.Response {
+func openaiSSEResponse(body io.Reader) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream; charset=utf-8"}},
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		Body:       io.NopCloser(body),
 	}
 }

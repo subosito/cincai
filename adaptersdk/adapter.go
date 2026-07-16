@@ -10,36 +10,32 @@ type Adapter interface {
 
 // Registry holds passthrough protocol handlers and translate adapters.
 type Registry struct {
-	ChatHandlers   map[string]handler.Chat
-	EmbedHandlers  map[string]handler.Embed
-	ImageHandlers  map[string]handler.Image
-	SpeechHandlers         map[string]handler.Speech
-	TranscriptionHandlers  map[string]handler.Transcription
-	VideoHandlers          map[string]handler.Video
-	DocumentHandlers map[string]handler.Document
-	ImageAdapters  map[string]handler.Image
-	SpeechAdapters map[string]handler.Speech
-	EmbedAdapters  map[string]handler.Embed
-	VideoAdapters  map[string]handler.Video
-	ChatAdapters   map[string]handler.Chat
-	DocumentAdapters map[string]handler.Document
+	ChatHandlers          map[string]handler.Chat
+	EmbedHandlers         map[string]handler.Embed
+	ImageHandlers         map[string]handler.Image
+	SpeechHandlers        map[string]handler.Speech
+	TranscriptionHandlers map[string]handler.Transcription
+	VideoHandlers         map[string]handler.Video
+	ImageAdapters         map[string]handler.Image
+	SpeechAdapters        map[string]handler.Speech
+	EmbedAdapters         map[string]handler.Embed
+	VideoAdapters         map[string]handler.Video
+	ChatAdapters          map[string]handler.Chat
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		ChatHandlers:   make(map[string]handler.Chat),
-		EmbedHandlers:  make(map[string]handler.Embed),
-		ImageHandlers:  make(map[string]handler.Image),
+		ChatHandlers:          make(map[string]handler.Chat),
+		EmbedHandlers:         make(map[string]handler.Embed),
+		ImageHandlers:         make(map[string]handler.Image),
 		SpeechHandlers:        make(map[string]handler.Speech),
 		TranscriptionHandlers: make(map[string]handler.Transcription),
 		VideoHandlers:         make(map[string]handler.Video),
-		DocumentHandlers: make(map[string]handler.Document),
-		ImageAdapters:  make(map[string]handler.Image),
-		SpeechAdapters: make(map[string]handler.Speech),
-		EmbedAdapters:  make(map[string]handler.Embed),
-		VideoAdapters:  make(map[string]handler.Video),
-		ChatAdapters:   make(map[string]handler.Chat),
-		DocumentAdapters: make(map[string]handler.Document),
+		ImageAdapters:         make(map[string]handler.Image),
+		SpeechAdapters:        make(map[string]handler.Speech),
+		EmbedAdapters:         make(map[string]handler.Embed),
+		VideoAdapters:         make(map[string]handler.Video),
+		ChatAdapters:          make(map[string]handler.Chat),
 	}
 }
 
@@ -98,12 +94,57 @@ func RegisterChatAdapter(reg *Registry, name string, h handler.Chat) {
 	reg.ChatAdapters[name] = h
 }
 
-// RegisterDocument adds a passthrough document/ocr handler keyed by protocol.
-func RegisterDocument(reg *Registry, h handler.Document) {
-	reg.DocumentHandlers[h.Protocol()] = h
+// RegisteredProtocols returns the passthrough protocol ids registered on reg,
+// i.e. the values a catalog surface may name in `protocol:`.
+func RegisteredProtocols(reg *Registry) map[string]bool {
+	out := map[string]bool{}
+	if reg == nil {
+		return out
+	}
+	for k := range reg.ChatHandlers {
+		out[k] = true
+	}
+	for k := range reg.EmbedHandlers {
+		out[k] = true
+	}
+	for k := range reg.ImageHandlers {
+		out[k] = true
+	}
+	for k := range reg.SpeechHandlers {
+		out[k] = true
+	}
+	for k := range reg.TranscriptionHandlers {
+		out[k] = true
+	}
+	for k := range reg.VideoHandlers {
+		out[k] = true
+	}
+	return out
 }
 
-// RegisterDocumentAdapter adds a translate document/ocr adapter keyed by adapter name.
-func RegisterDocumentAdapter(reg *Registry, name string, h handler.Document) {
-	reg.DocumentAdapters[name] = h
+// RegisteredAdapters returns the translate adapter names registered on reg,
+// i.e. the values a catalog surface or pool entry may name in `adapter:`.
+// These are handler keys, not Adapter.Name(): the wire-translate adapter
+// registers as wire-translate-a2o and wire-translate-o2a.
+func RegisteredAdapters(reg *Registry) map[string]bool {
+	out := map[string]bool{}
+	if reg == nil {
+		return out
+	}
+	for k := range reg.ChatAdapters {
+		out[k] = true
+	}
+	for k := range reg.EmbedAdapters {
+		out[k] = true
+	}
+	for k := range reg.ImageAdapters {
+		out[k] = true
+	}
+	for k := range reg.SpeechAdapters {
+		out[k] = true
+	}
+	for k := range reg.VideoAdapters {
+		out[k] = true
+	}
+	return out
 }

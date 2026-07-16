@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/subosito/cincai"
+	"github.com/subosito/cincai/adaptersdk"
+	corecatalog "github.com/subosito/cincai/catalog"
+	"github.com/subosito/cincai/compose"
 	icatalog "github.com/subosito/cincai/internal/catalog"
 	"github.com/subosito/cincai/internal/config"
 )
@@ -65,8 +70,42 @@ func catalogValidateCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "cincai catalog validate: %v\n", err)
 		return 1
 	}
+	if err := validateHandlers(cat, *configPath, *catalogPath); err != nil {
+		fmt.Fprintf(os.Stderr, "cincai catalog validate: %v\n", err)
+		return 1
+	}
 	fmt.Fprintf(os.Stdout, "catalog ok: %s (%d models)\n", path, cat.ModelCount())
 	return 0
+}
+
+// validateHandlers checks that every protocol and adapter the catalog names is
+// actually registered by the adapters this binary links and adapters.enable turns
+// on. Without it, routes resolve fine here and then fail per-request at runtime.
+func validateHandlers(cat *corecatalog.Catalog, configPath, catalogOverride string) error {
+	cfgPath := strings.TrimSpace(configPath)
+	if cfgPath == "" {
+		cfgPath = "config/cincai.yaml"
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		// --catalog validates a file standalone, so the config may not exist. Say
+		// what was skipped rather than implying a clean bill of health.
+		if strings.TrimSpace(catalogOverride) != "" {
+			fmt.Fprintf(os.Stderr, "note: %v; skipping handler registration check (no adapters.enable)\n", err)
+			return nil
+		}
+		return fmt.Errorf("config: %w", err)
+	}
+	reg, err := compose.FromConfig(cfg.Adapters.Enable, cincai.Adapters())
+	if err != nil {
+		return err
+	}
+	missing := corecatalog.Doctor(cat, adaptersdk.RegisteredProtocols(reg), adaptersdk.RegisteredAdapters(reg))
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("catalog names handlers that no enabled adapter registers:\n  %s\ncheck adapters.enable in %s", strings.Join(missing, "\n  "), cfgPath)
 }
 
 func resolveCatalogPath(configPath, catalogOverride string) (string, error) {

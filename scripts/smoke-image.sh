@@ -31,7 +31,7 @@ smoke_build
 smoke_create_gateway_key smoke-image
 
 echo "== credential import =="
-./bin/cincai credential import xai --api-key "${SMOKE_XAI_API_KEY:-xai-smoke-fake}" --config config/cincai.yaml
+./bin/cincai credential import xai --api-key "${SMOKE_XAI_API_KEY:-xai-smoke-fake}" --config "$CONFIG"
 
 echo "== serve =="
 smoke_serve

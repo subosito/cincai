@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/subosito/cincai/internal/adapters/elevenlabs"
 	"github.com/subosito/cincai/adaptersdk"
 	"github.com/subosito/cincai/adaptersdk/handler"
 	"github.com/subosito/cincai/catalog"
 	"github.com/subosito/cincai/credential/store"
+	"github.com/subosito/cincai/internal/adapters/elevenlabs"
 )
 
 func TestSpeechTranslateOpenAIToElevenLabs(t *testing.T) {

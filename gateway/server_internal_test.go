@@ -38,7 +38,7 @@ func TestIsLoopbackListen(t *testing.T) {
 		{"127.0.0.1:0", true},
 		{"[::1]:9420", true},
 		{"localhost:9420", true},
-		{":9420", false},   // all interfaces
+		{":9420", false}, // all interfaces
 		{"0.0.0.0:9420", false},
 		{"192.168.1.5:9420", false},
 		{"[::]:9420", false}, // unspecified v6

@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/subosito/cincai/adaptersdk"
-	"github.com/subosito/cincai/internal/testfixture"
-	"github.com/subosito/cincai/passthrough"
 	"github.com/subosito/cincai/catalog"
 	"github.com/subosito/cincai/credential/seal"
 	"github.com/subosito/cincai/credential/store"
 	"github.com/subosito/cincai/ingress/keyring"
+	"github.com/subosito/cincai/internal/testfixture"
+	"github.com/subosito/cincai/passthrough"
 	"github.com/subosito/cincai/upstream"
 	"github.com/subosito/cincai/wire"
 )

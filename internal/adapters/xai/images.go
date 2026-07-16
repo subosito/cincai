@@ -91,13 +91,7 @@ func buildXAIGenerateBody(raw []byte, model string) ([]byte, error) {
 	if n > 4 {
 		n = 4
 	}
-	ar := strings.TrimSpace(req.AspectRatio)
-	if ar == "" {
-		ar = strings.TrimSpace(req.Size)
-	}
-	if ar == "" {
-		ar = "auto"
-	}
+	ar := normalizeXAIAspect(req.AspectRatio, req.Size)
 	switch ar {
 	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3":
 	default:
@@ -147,4 +141,74 @@ func imageDataURL(raw string) string {
 		return raw
 	}
 	return "data:image/png;base64," + raw
+}
+
+// normalizeXAIAspect maps OpenAI-style size (e.g. 1024x1024) and explicit
+// aspect_ratio into values accepted by the xAI image API.
+func normalizeXAIAspect(aspectRatio, size string) string {
+	ar := strings.TrimSpace(aspectRatio)
+	if ar == "" {
+		ar = strings.TrimSpace(size)
+	}
+	if ar == "" {
+		return "auto"
+	}
+	switch strings.ToLower(ar) {
+	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3":
+		return strings.ToLower(ar)
+	// Common OpenAI / DALL·E pixel sizes → nearest aspect.
+	case "256x256", "512x512", "1024x1024":
+		return "1:1"
+	case "1792x1024", "1536x1024", "1344x768":
+		return "16:9"
+	case "1024x1792", "1024x1536", "768x1344":
+		return "9:16"
+	default:
+		// WxH pixel pair → pick closest supported aspect.
+		if w, h, ok := parsePixelSize(ar); ok && w > 0 && h > 0 {
+			return closestAspect(w, h)
+		}
+		return "auto"
+	}
+}
+
+func parsePixelSize(s string) (w, h int, ok bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	parts := strings.Split(s, "x")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	var a, b int
+	if _, err := fmt.Sscanf(parts[0], "%d", &a); err != nil {
+		return 0, 0, false
+	}
+	if _, err := fmt.Sscanf(parts[1], "%d", &b); err != nil {
+		return 0, 0, false
+	}
+	return a, b, true
+}
+
+func closestAspect(w, h int) string {
+	r := float64(w) / float64(h)
+	type cand struct {
+		name string
+		r    float64
+	}
+	cands := []cand{
+		{"1:1", 1}, {"16:9", 16.0 / 9}, {"9:16", 9.0 / 16},
+		{"4:3", 4.0 / 3}, {"3:4", 3.0 / 4}, {"3:2", 1.5}, {"2:3", 2.0 / 3},
+	}
+	best := "auto"
+	bestD := 1e9
+	for _, c := range cands {
+		d := r - c.r
+		if d < 0 {
+			d = -d
+		}
+		if d < bestD {
+			bestD = d
+			best = c.name
+		}
+	}
+	return best
 }

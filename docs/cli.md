@@ -209,7 +209,7 @@ Scope examples:
 
 - `*` — full access
 - `wire:openai-chat-completions` — chat completions only
-- `model:glm-5.2` — one catalog model id
+- `model:example-model` — one catalog model id
 
 ### `list`
 

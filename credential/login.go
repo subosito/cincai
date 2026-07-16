@@ -16,12 +16,12 @@ import (
 
 // LoginOptions controls OAuth login against the encrypted dev/prod broker.
 type LoginOptions struct {
-	ConfigPath    string
-	Profile       string
-	Flow          generic.Flow
+	ConfigPath     string
+	Profile        string
+	Flow           generic.Flow
 	CallbackListen string
-	Stderr        io.Writer
-	OnManualInput func(context.Context) (string, error)
+	Stderr         io.Writer
+	OnManualInput  func(context.Context) (string, error)
 }
 
 // Login runs vendor or generic OAuth login and stores the grant in the encrypted broker.

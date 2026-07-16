@@ -38,13 +38,15 @@ func (f *fakeStore) UpdateOAuth(_ context.Context, profile string, m store.Mater
 }
 
 func (f *fakeStore) PutAPIKey(context.Context, string, string) (int64, error)        { return 0, nil }
-func (f *fakeStore) PutOAuth(context.Context, string, store.Material) (int64, error)  { return 0, nil }
-func (f *fakeStore) ListSummaries(context.Context) ([]store.CredentialSummary, error) { return nil, nil }
+func (f *fakeStore) PutOAuth(context.Context, string, store.Material) (int64, error) { return 0, nil }
+func (f *fakeStore) ListSummaries(context.Context) ([]store.CredentialSummary, error) {
+	return nil, nil
+}
 func (f *fakeStore) GetSummary(context.Context, int64) (store.CredentialSummary, error) {
 	return store.CredentialSummary{}, nil
 }
-func (f *fakeStore) Disable(context.Context, int64, string) error       { return nil }
-func (f *fakeStore) Enable(context.Context, int64) error                { return nil }
+func (f *fakeStore) Disable(context.Context, int64, string) error { return nil }
+func (f *fakeStore) Enable(context.Context, int64) error          { return nil }
 func (f *fakeStore) SnapshotMeta(context.Context) (store.SnapshotMeta, error) {
 	return store.SnapshotMeta{}, nil
 }

@@ -25,9 +25,9 @@ func TestVerifyGatewayKey(t *testing.T) {
 
 	// Only the sha256 scheme is accepted; any other stored form rejects cleanly.
 	for _, bad := range []string{
-		"sha256$not-hex",  // right scheme, malformed digest
-		"other$deadbeef",  // unknown scheme
-		"",                // empty
+		"sha256$not-hex", // right scheme, malformed digest
+		"other$deadbeef", // unknown scheme
+		"",               // empty
 	} {
 		if verifyGatewayKey(secret, bad) {
 			t.Fatalf("stored value %q must not verify", bad)

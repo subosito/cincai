@@ -37,9 +37,9 @@ type KeyStore interface {
 
 // KeyMeta is gateway key metadata.
 type KeyMeta struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
+	ID        int64    `json:"id"`
+	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
 	ExpiresAt *int64   `json:"expiresAt,omitempty"`
 	Revoked   bool     `json:"revoked"`
 	Scopes    []string `json:"scopes,omitempty"`

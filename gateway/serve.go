@@ -17,14 +17,14 @@ import (
 
 // ServeOptions boots a standalone gateway from cincai.yaml.
 type ServeOptions struct {
-	ConfigPath    string
-	ServiceName   string
-	MetricPrefix  string
-	Registry      func(cfg *ConfigFile) (*adaptersdk.Registry, error)
-	CatalogLoad       func(path string) (*catalog.Catalog, error)
-	DataMount         DataMount
-	WrapDataHandler   func(http.Handler) http.Handler
-	AuxServers        AuxServersFunc
+	ConfigPath      string
+	ServiceName     string
+	MetricPrefix    string
+	Registry        func(cfg *ConfigFile) (*adaptersdk.Registry, error)
+	CatalogLoad     func(path string) (*catalog.Catalog, error)
+	DataMount       DataMount
+	WrapDataHandler func(http.Handler) http.Handler
+	AuxServers      AuxServersFunc
 }
 
 // Serve loads config, opens stores, and runs until ctx is cancelled or error.
@@ -37,7 +37,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	defer gw.cfg.Store.Close()
 
 	name := serviceName(opts.ServiceName)
-	observability.Boot(name)
+	observability.BootWithPrefix(name, strings.TrimSpace(opts.MetricPrefix))
 	defer observability.ShutdownGraceful()
 	return gw.ListenAndServe(ctx)
 }

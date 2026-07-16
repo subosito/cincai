@@ -32,6 +32,15 @@ providers:
         adapter: elevenlabs
         base_url: https://api.elevenlabs.io
 
+  # mistral OCR (API key: mistral-api). The adapter takes an ordinary chat
+  # request and translates it to Mistral's /v1/ocr, so base_url has no /v1.
+  mistral:
+    credential_profile: mistral-api
+    capabilities:
+      ocr:
+        adapter: mistral
+        base_url: https://api.mistral.ai
+
 models:
   deepseek-v4-flash:
     modalities:
@@ -62,3 +71,11 @@ models:
         wire: openai-audio-speech
         provider_ref: elevenlabs
         model: eleven_v3
+
+  # Send a document/image to /v1/chat/completions; the mistral adapter routes it
+  # to /v1/ocr and returns the markdown as a chat completion.
+  mistral-ocr-latest:
+    modalities:
+      ocr:
+        wire: openai-chat-completions
+        provider_ref: mistral

@@ -5,8 +5,9 @@ and submit changes.
 
 ## Development setup
 
-Cincai targets **Go 1.26.4+**. The repository ships a [devenv](https://devenv.sh)
-environment that pins the toolchain and dev tools (`just`, `openssl`):
+Cincai targets **Go 1.26.4+**, pinned by the `go` directive in `go.mod`. The repository
+ships a [devenv](https://devenv.sh) environment that provides the Go toolchain and dev
+tools (`just`, `openssl`):
 
 ```bash
 devenv shell     # or: direnv allow, if you use direnv

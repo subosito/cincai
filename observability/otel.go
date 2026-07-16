@@ -28,15 +28,15 @@ import (
 )
 
 var (
-	mu       sync.Mutex
-	global   *Provider
+	mu         sync.Mutex
+	global     *Provider
 	ingressLog = slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 )
 
 // Provider holds cincai observability state.
 type Provider struct {
 	cfg            Config
-	metricPrefix  string
+	metricPrefix   string
 	attached       bool // true when bound to embedder-owned global OTel (do not Shutdown exporters)
 	tracerProvider *trace.TracerProvider
 	meterProvider  *metric.MeterProvider
@@ -89,12 +89,17 @@ func Hooked() bool {
 
 // Init configures global OTel export. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
 func Init(serviceName string) (*Provider, error) {
+	return InitWithPrefix(serviceName, DefaultMetricPrefix)
+}
+
+// InitWithPrefix is like Init with a custom metric name prefix.
+func InitWithPrefix(serviceName, metricPrefix string) (*Provider, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	if global != nil {
 		return global, nil
 	}
-	cfg := LoadConfig(serviceName)
+	cfg := LoadConfigWithPrefix(serviceName, metricPrefix)
 	if !cfg.Enabled {
 		global = &Provider{cfg: cfg, metricPrefix: cfg.MetricPrefix, Metrics: noopInst, tracer: otel.Tracer("cincai/noop")}
 		return global, nil

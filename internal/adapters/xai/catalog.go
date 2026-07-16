@@ -21,16 +21,6 @@ func Surfaces(baseURL string) map[string]any {
 	}
 }
 
-// ImageSurfaces returns image-gen routing for xAI-backed models.
-func ImageSurfaces(baseURL string) map[string]any {
-	return map[string]any{
-		"image_gen": map[string]any{
-			"adapter":  "xai",
-			"base_url": baseURL,
-		},
-	}
-}
-
 // NormalizeProvider expands flat xAI provider rows.
 func NormalizeProvider(entry map[string]any) (map[string]any, bool) {
 	baseURL := fields.FirstNonEmpty(fields.String(entry["base_url"]), fields.String(entry["url"]))

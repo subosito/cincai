@@ -17,9 +17,9 @@ func TestRetryable(t *testing.T) {
 		err    error
 		want   bool
 	}{
-		{0, dialErr, true},                 // never connected → safe to fail over
-		{0, sentErr, false},                // request may have been sent → do not retry
-		{0, errors.New("generic"), false},  // unknown error → assume it may have executed
+		{0, dialErr, true},                // never connected → safe to fail over
+		{0, sentErr, false},               // request may have been sent → do not retry
+		{0, errors.New("generic"), false}, // unknown error → assume it may have executed
 		{http.StatusOK, nil, false},
 		{http.StatusBadRequest, nil, false},
 		{http.StatusPaymentRequired, nil, true},

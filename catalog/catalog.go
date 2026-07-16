@@ -7,20 +7,21 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Wire IDs.
 const (
-	WireOpenAIChat       = "openai-chat-completions"
-	WireAnthropicMsg     = "anthropic-messages"
-	WireOpenAIEmbed      = "openai-embeddings"
-	WireOpenAIResponses     = "openai-responses"
-	WireOpenAIImagesGen     = "openai-images-generations"
-	WireOpenAIAudioSpeech        = "openai-audio-speech"
+	WireOpenAIChat                = "openai-chat-completions"
+	WireAnthropicMsg              = "anthropic-messages"
+	WireOpenAIEmbed               = "openai-embeddings"
+	WireOpenAIResponses           = "openai-responses"
+	WireOpenAIImagesGen           = "openai-images-generations"
+	WireOpenAIAudioSpeech         = "openai-audio-speech"
 	WireOpenAIAudioTranscriptions = "openai-audio-transcriptions"
-	WireOpenAIVideos             = "openai-videos"
+	WireOpenAIVideos              = "openai-videos"
 )
 
 // Strategy names.
@@ -76,6 +77,8 @@ type Catalog struct {
 	doc Document
 	rr  map[string]*roundRobinState
 	mu  sync.Mutex
+	// loadedAt backs ModelListItem.Created. See listModels for why.
+	loadedAt int64
 }
 
 type roundRobinState struct {
@@ -96,8 +99,12 @@ func Load(path string) (*Catalog, error) {
 }
 
 // NewFromDocument builds a catalog from an in-memory document (after shim normalization).
+// Same-wire multi-modality rows are expanded to base:facet model ids (see ExpandWireCollisions).
 func NewFromDocument(doc Document) (*Catalog, error) {
-	return &Catalog{doc: doc, rr: make(map[string]*roundRobinState)}, nil
+	if err := ExpandWireCollisions(&doc); err != nil {
+		return nil, err
+	}
+	return &Catalog{doc: doc, rr: make(map[string]*roundRobinState), loadedAt: time.Now().Unix()}, nil
 }
 
 // WireForPath maps HTTP path to wire id.
@@ -153,9 +160,9 @@ func (c *Catalog) Resolve(model, wire string) (RoutePlan, error) {
 }
 
 // ResolveWithModality picks upstream route(s) for model + wire, optionally constrained
-// by catalog modality key (models.<id>.modalities.<key>). Pass hint from
-// ModalityHintFromRequest or set explicitly; empty hint auto-selects
-// when unambiguous and errors when multiple modalities share the wire.
+// by catalog modality key (models.<id>.modalities.<key>). Empty modality auto-selects
+// when unambiguous. Same-wire multi-modality should be expanded to base:facet ids at
+// load (ExpandWireCollisions); residual collisions error with that guidance.
 func (c *Catalog) ResolveWithModality(model, wire, modality string) (RoutePlan, error) {
 	m, ok := c.doc.Models[model]
 	if !ok {
@@ -219,7 +226,7 @@ func pickModality(candidates []string, hint string) (string, error) {
 	if hasModality(candidates, "chat") && onlySearchSiblings(candidates) {
 		return "chat", nil
 	}
-	return "", fmt.Errorf("multiple modalities for wire: %s (set %s)", strings.Join(candidates, ", "), HeaderCatalogModality)
+	return "", fmt.Errorf("multiple modalities for wire: %s (use distinct model ids base%sfacet; catalog expand should have split these at load)", strings.Join(candidates, ", "), FacetSeparator)
 }
 
 func hasModality(candidates []string, name string) bool {

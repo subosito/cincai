@@ -47,11 +47,11 @@ func TestCopyResponseStripsHopByHopHeaders(t *testing.T) {
 	err := upstream.CopyResponse(context.Background(), rec, &http.Response{
 		StatusCode: 200,
 		Header: http.Header{
-			"Content-Type":        []string{"application/json"},
-			"Transfer-Encoding":   []string{"chunked"},
-			"Connection":          []string{"keep-alive, X-Foo"},
-			"X-Foo":               []string{"bar"},
-			"X-Custom":            []string{"keep"},
+			"Content-Type":      []string{"application/json"},
+			"Transfer-Encoding": []string{"chunked"},
+			"Connection":        []string{"keep-alive, X-Foo"},
+			"X-Foo":             []string{"bar"},
+			"X-Custom":          []string{"keep"},
 		},
 		Body: io.NopCloser(strings.NewReader(`{"ok":true}`)),
 	})

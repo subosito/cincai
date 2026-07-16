@@ -1,7 +1,6 @@
 package wiretranslate
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,96 +9,7 @@ import (
 	"github.com/subosito/cincai/adaptersdk/messages"
 )
 
-func encodeOpenAISSE(events []messages.StreamEvent, model string) ([]byte, error) {
-	var buf bytes.Buffer
-	chunkID := "chatcmpl-wiretranslate"
-	created := time.Now().Unix()
-	msgModel := strings.TrimSpace(model)
-	var (
-		roleSent    bool
-		textStarted bool
-		finish      = "stop"
-	)
-
-	writeChunk := func(choices []map[string]any) error {
-		payload := map[string]any{
-			"id":      chunkID,
-			"object":  "chat.completion.chunk",
-			"created": created,
-			"model":   msgModel,
-			"choices": choices,
-		}
-		raw, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintf(&buf, "data: %s\n\n", raw)
-		return err
-	}
-
-	for _, ev := range events {
-		switch ev.Kind {
-		case messages.KindMessageStart:
-			if strings.TrimSpace(ev.Model) != "" {
-				msgModel = ev.Model
-			}
-			if strings.TrimSpace(ev.MessageID) != "" {
-				chunkID = ev.MessageID
-			}
-		case messages.KindTextDelta:
-			if !roleSent {
-				roleSent = true
-				if err := writeChunk([]map[string]any{{
-					"index": 0,
-					"delta": map[string]any{"role": "assistant", "content": ""},
-				}}); err != nil {
-					return nil, err
-				}
-			}
-			textStarted = true
-			if err := writeChunk([]map[string]any{{
-				"index": 0,
-				"delta": map[string]any{"content": ev.Text},
-			}}); err != nil {
-				return nil, err
-			}
-		case messages.KindTelemetry:
-			if s := strings.TrimSpace(ev.Message); s != "" {
-				finish = mapOpenAIFinish(s)
-			}
-		case messages.KindMessageStop:
-			if !roleSent {
-				if err := writeChunk([]map[string]any{{
-					"index": 0,
-					"delta": map[string]any{"role": "assistant", "content": ""},
-				}}); err != nil {
-					return nil, err
-				}
-				roleSent = true
-			}
-			if err := writeChunk([]map[string]any{{
-				"index":         0,
-				"delta":         map[string]any{},
-				"finish_reason": finish,
-			}}); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if buf.Len() == 0 {
-		return nil, fmt.Errorf("wire-translate: no openai stream events")
-	}
-	if !textStarted {
-		if err := writeChunk([]map[string]any{{
-			"index": 0,
-			"delta": map[string]any{"role": "assistant", "content": ""},
-		}}); err != nil {
-			return nil, err
-		}
-	}
-	_, _ = fmt.Fprintf(&buf, "data: [DONE]\n\n")
-	return buf.Bytes(), nil
-}
+// encodeOpenAISSE is defined in stream_pipe.go (incremental encoder batch wrapper).
 
 func encodeOpenAIJSON(events []messages.StreamEvent, model string) ([]byte, error) {
 	msg, err := buildAnthropicMessage(events, model)

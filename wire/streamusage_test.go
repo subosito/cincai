@@ -74,8 +74,8 @@ func TestIsUsageOnlyDataLine(t *testing.T) {
 		}
 	}
 	keep := [][]byte{
-		[]byte(`data: {"choices":[{"delta":{"content":"hi"}}]}`),          // content frame
-		[]byte(`data: [DONE]`),                                            // terminator
+		[]byte(`data: {"choices":[{"delta":{"content":"hi"}}]}`), // content frame
+		[]byte(`data: [DONE]`), // terminator
 		[]byte(`data: {"choices":[{"finish_reason":"stop"}],"usage":{}}`), // has choices
 		[]byte(`event: message_start`),                                    // not a data line
 		[]byte(``),

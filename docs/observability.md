@@ -13,8 +13,8 @@ Each request writes one JSON line to stderr:
 ```json
 {
   "wire": "openai-chat-completions",
-  "model": "glm-5.2",
-  "provider_ref": "zhipu",
+  "model": "example-model",
+  "provider_ref": "vendor",
   "protocol": "openai-chat-completions",
   "status": 200,
   "latency_ms": 842,
@@ -42,6 +42,41 @@ Fields:
 | `usage` | Token or media units parsed from upstream (omitted when zero) |
 
 When OTLP is enabled, logs include `trace_id` and `span_id` for correlation.
+
+---
+
+## Optional host attribution
+
+Labels only — **not** used for routing (path + body `model` only). Semantic
+slots are product-agnostic; wire header **names** are configurable aliases.
+
+| Slot | Meaning | Default header |
+|------|---------|----------------|
+| Actor | Who is calling (service, bot, app) | `X-Cincai-Actor` |
+| Session | Conversation / session id | `X-Cincai-Session` |
+| Component | Feature bucket (`turn.chat`, `tool.generate_image`, …) | `X-Cincai-Component` |
+| (always) | Shared correlation | `X-Correlation-Id` |
+
+**Default:** `StashHostAttribution` accepts the `X-Cincai-*` names above.
+
+**Aliases:** `StashHostAttributionWith(AttributionConfig{…})` lists alternate
+headers per slot. First non-empty alias wins; **every** configured alias is
+stripped before upstream. Empty slots fall back to the defaults.
+
+```go
+cfg := observability.AttributionConfig{
+    Actor:     []string{"X-Host-Actor", observability.HeaderActor},
+    Session:   []string{"X-Host-Session", observability.HeaderSession},
+    Component: []string{"X-Host-Component", observability.HeaderComponent},
+}
+opts.WrapDataHandler = observability.StashHostAttributionWith(cfg)
+```
+
+Clients send their own header names; the gateway operator lists the aliases to
+accept. Headers not in the config are ignored.
+
+Package: `observability` (`HostAttribution`, `HostAttributionFrom`, constants
+`HeaderActor` / `HeaderSession` / `HeaderComponent`).
 
 ---
 

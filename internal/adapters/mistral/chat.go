@@ -3,12 +3,15 @@ package mistral
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/subosito/cincai/adaptersdk/handler"
 )
@@ -106,8 +109,8 @@ func translateChatToOcr(chatReq map[string]any) map[string]any {
 										docType = "document_url"
 									}
 									ocrReq["document"] = map[string]any{
-										"type":     docType,
-										docType:    url,
+										"type":  docType,
+										docType: url,
 									}
 									break
 								}
@@ -120,6 +123,15 @@ func translateChatToOcr(chatReq map[string]any) map[string]any {
 	}
 	copyOcrPassthrough(ocrReq, chatReq)
 	return ocrReq
+}
+
+// chatCompletionID mints an OpenAI-shaped id for the completion synthesized from
+// Mistral's /v1/ocr response, which carries no id of its own to reuse.
+func chatCompletionID() string {
+	b := make([]byte, 12)
+	// crypto/rand.Read never returns an error and always fills b.
+	_, _ = rand.Read(b)
+	return "chatcmpl-" + hex.EncodeToString(b)
 }
 
 func translateOcrRespToChat(ocrResp *http.Response) *http.Response {
@@ -144,8 +156,9 @@ func translateOcrRespToChat(ocrResp *http.Response) *http.Response {
 		msg["ocr_confidence"] = conf
 	}
 	chatResp := map[string]any{
-		"id":      "mistral-ocr-fake",
+		"id":      chatCompletionID(),
 		"object":  "chat.completion",
+		"created": time.Now().Unix(),
 		"model":   ocrData["model"],
 		"choices": []map[string]any{
 			{
@@ -167,5 +180,3 @@ func translateOcrRespToChat(ocrResp *http.Response) *http.Response {
 	ocrResp.Header.Set("Content-Length", strconv.Itoa(len(newBody)))
 	return ocrResp
 }
-
-

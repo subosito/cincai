@@ -142,7 +142,8 @@ Separate from generation — dedicated routes for media input (not multimodal ch
 | `video` | Video understanding | `openai-chat-completions` |
 | `voice` | Audio transcription | `openai-audio-transcriptions` |
 
-These are **short** modality keys (not `*_gen`). Example stubs are commented in `config/providers.yaml.example`.
+These are **short** modality keys (not `*_gen`). The starter catalog ships generation
+routes only, so declare these yourself on the model entry.
 
 Multimodal **chat in one turn** still uses `modalities.chat` on the chat/responses wire.
 

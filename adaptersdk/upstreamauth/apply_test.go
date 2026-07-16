@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/subosito/cincai/adaptersdk/upstreamauth"
 	"github.com/subosito/cincai/adaptersdk/handler"
+	"github.com/subosito/cincai/adaptersdk/upstreamauth"
 	"github.com/subosito/cincai/catalog"
 	"github.com/subosito/cincai/credential/inject"
 	"github.com/subosito/cincai/credential/store"

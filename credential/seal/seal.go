@@ -15,10 +15,10 @@ import (
 const envelopeVersion = 1
 
 type envelope struct {
-	V    int    `json:"v"`
-	Alg  string `json:"alg"`
+	V     int    `json:"v"`
+	Alg   string `json:"alg"`
 	Nonce string `json:"nonce"`
-	CT   string `json:"ct"`
+	CT    string `json:"ct"`
 }
 
 // Key holds a 32-byte AES-256 key.

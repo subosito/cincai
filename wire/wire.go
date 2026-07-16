@@ -27,11 +27,11 @@ import (
 
 // Engine handles ingress wires (chat, messages, embeddings, media, models, healthz).
 type Engine struct {
-	Catalog *catalog.Catalog
-	Store   store.Store
+	Catalog  *catalog.Catalog
+	Store    store.Store
 	Adapters *adaptersdk.Registry
-	Auth    *keyring.Authenticator
-	Client  *upstream.Client
+	Auth     *keyring.Authenticator
+	Client   *upstream.Client
 }
 
 func (e *Engine) Handler() http.Handler {
@@ -342,8 +342,9 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	modality := catalog.ModalityHintFromRequest(r, wireID)
-	plan, err := e.Catalog.ResolveWithModality(model, wireID, modality)
+	// Routing is model id + wire only. Same-wire multi-modality expands to
+	// base:facet public ids at catalog load (no custom client headers).
+	plan, err := e.Catalog.ResolveWithModality(model, wireID, catalog.DefaultModalityForWire(wireID))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -352,7 +353,7 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 	ingressPath := r.URL.Path
 	ctx := r.Context()
 	outHdr := r.Header.Clone()
-	catalog.StripIngressControlHeaders(outHdr)
+
 
 	for i, target := range plan.Targets {
 		recordTarget(rec, target)
@@ -428,4 +429,3 @@ var (
 	errMethodNotAllowed   = errors.New("method not allowed")
 	errRouteNotRegistered = errors.New("route not registered")
 )
-

@@ -7,11 +7,11 @@ import (
 
 // Config holds OTLP export settings (standard OTEL_* env vars).
 type Config struct {
-	Enabled       bool
-	ServiceName   string
-	MetricPrefix  string
-	Endpoint      string
-	Headers       map[string]string
+	Enabled      bool
+	ServiceName  string
+	MetricPrefix string
+	Endpoint     string
+	Headers      map[string]string
 }
 
 // LoadConfig reads OTEL env. Export is off when endpoint is empty or OTEL_SDK_DISABLED=true.

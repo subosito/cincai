@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,12 +35,12 @@ type AuxServersFunc func(store.Store, keyring.KeyStore, *ConfigFile) ([]*http.Se
 
 // Config assembles a running data-plane gateway (shared credential store).
 type Config struct {
-	ConfigFile string
-	Config     *ConfigFile
-	Catalog    *catalog.Catalog
-	Store      store.Store
-	KeyStore   keyring.KeyStore
-	Adapters   *adaptersdk.Registry
+	ConfigFile      string
+	Config          *ConfigFile
+	Catalog         *catalog.Catalog
+	Store           store.Store
+	KeyStore        keyring.KeyStore
+	Adapters        *adaptersdk.Registry
 	DataListen      string
 	DataMount       DataMount
 	WrapDataHandler func(http.Handler) http.Handler
@@ -139,11 +139,11 @@ func (g *Gateway) track(next http.Handler) http.Handler {
 
 func (g *Gateway) dataHandler() http.Handler {
 	engine := &wire.Engine{
-		Catalog: g.cfg.Catalog,
-		Store:   g.cfg.Store,
+		Catalog:  g.cfg.Catalog,
+		Store:    g.cfg.Store,
 		Adapters: g.cfg.Adapters,
-		Auth:    &keyring.Authenticator{Store: g.cfg.KeyStore},
-		Client:  upstream.NewClient(),
+		Auth:     &keyring.Authenticator{Store: g.cfg.KeyStore},
+		Client:   upstream.NewClient(),
 	}
 	mux := http.NewServeMux()
 	if g.cfg.DataMount != nil {

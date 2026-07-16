@@ -24,9 +24,7 @@ adapters:
     - wire-translate
     - xai
     - elevenlabs
-
-ingress:
-  client_auth: keyring
+    - mistral
 
 # OAuth profiles: cincai credential login <profile> (vendor modules — see cincai credential login --list)
 # API keys: cincai credential import <profile> --api-key …

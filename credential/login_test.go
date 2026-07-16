@@ -33,7 +33,7 @@ func TestVendorProfilesDocumented(t *testing.T) {
 	for _, p := range oauthmod.VendorProfiles() {
 		got[p] = true
 	}
-	for _, want := range []string{"xai"} {
+	for _, want := range []string{"xai", "xai-oauth"} {
 		if !got[want] {
 			t.Fatalf("missing vendor profile %q; got %v", want, oauthmod.VendorProfiles())
 		}

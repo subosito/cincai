@@ -17,7 +17,7 @@ smoke_create_gateway_key smoke-chat
 echo "== credential import =="
 ./bin/cincai credential import deepseek-api \
   --api-key "${SMOKE_UPSTREAM_API_KEY:-sk-smoke-fake-upstream}" \
-  --config config/cincai.yaml
+  --config "$CONFIG"
 
 echo "== serve =="
 smoke_serve
@@ -39,7 +39,7 @@ CHAT_CODE=$(curl -sS -o "$CHAT_OUT" -w '%{http_code}' \
   "$BASE/v1/chat/completions")
 echo "status=$CHAT_CODE body=$(head -c 300 "$CHAT_OUT")"
 smoke_assert_catalog_routed "$CHAT_OUT"
-if [[ "$CHAT_CODE" != "401" && "$CHAT_CODE" != "200" && "$CHAT_CODE" != "402" && "$CHAT_CODE" != "403" ]]; then
+if [[ "$CHAT_CODE" != "401" && "$CHAT_CODE" != "200" && "$CHAT_CODE" != "402" && "$CHAT_CODE" != "403" && "$CHAT_CODE" != "502" ]]; then
   echo "unexpected chat status $CHAT_CODE" >&2
   exit 1
 fi

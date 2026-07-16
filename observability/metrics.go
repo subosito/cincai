@@ -16,9 +16,9 @@ const DefaultMetricPrefix = "cincai"
 
 // InstrumentSet holds OTel instruments (noop-safe).
 type InstrumentSet struct {
-	ingressTotal    metric.Int64Counter
-	ingressDuration metric.Float64Histogram
-	upstreamTotal   metric.Int64Counter
+	ingressTotal     metric.Int64Counter
+	ingressDuration  metric.Float64Histogram
+	upstreamTotal    metric.Int64Counter
 	upstreamDuration metric.Float64Histogram
 }
 

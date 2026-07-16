@@ -40,4 +40,3 @@ func TestLoadRejectsCredentialProfiles(t *testing.T) {
 		t.Fatal("expected credential_profiles error")
 	}
 }
-

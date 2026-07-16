@@ -4,8 +4,8 @@ package register
 import (
 	"sync"
 
-	"github.com/subosito/cincai/internal/oauth/bridge"
 	oauthpack "github.com/subosito/cincai/credential/oauth/pack"
+	"github.com/subosito/cincai/internal/oauth/bridge"
 
 	_ "github.com/subosito/cincai/link"
 

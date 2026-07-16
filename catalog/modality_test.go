@@ -1,27 +1,22 @@
 package catalog_test
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/subosito/cincai/catalog"
 )
 
-func TestModalityHintFromRequest(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	req.Header.Set(catalog.HeaderCatalogModality, "image")
-	if got := catalog.ModalityHintFromRequest(req, catalog.WireOpenAIChat); got != "image" {
-		t.Fatalf("got %q want image", got)
+func TestDefaultModalityForWire(t *testing.T) {
+	if got := catalog.DefaultModalityForWire(catalog.WireOpenAIEmbed); got != "embed" {
+		t.Fatalf("got %q want embed", got)
 	}
-	if got := catalog.ModalityHintFromRequest(nil, catalog.WireOpenAIEmbed); got != "embed" {
-		t.Fatalf("embed wire got %q", got)
-	}
-	if got := catalog.ModalityHintFromRequest(req, catalog.WireOpenAIImagesGen); got != "" {
-		t.Fatalf("images wire got %q want empty", got)
+	if got := catalog.DefaultModalityForWire(catalog.WireOpenAIChat); got != "" {
+		t.Fatalf("got %q want empty", got)
 	}
 }
 
-func TestPickModalityDefaultsChatOverSearchSiblings(t *testing.T) {
+// After expand, chat+search_web under one authoring id become bare + :search.
+func TestExpand_ChatAndSearchBecomeDistinctModels(t *testing.T) {
 	doc := catalog.Document{
 		Providers: map[string]catalog.Provider{
 			"vendor-chat": {
@@ -47,23 +42,16 @@ func TestPickModalityDefaultsChatOverSearchSiblings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := cat.Resolve("m", catalog.WireOpenAIResponses)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := cat.Resolve("m", catalog.WireOpenAIResponses); err != nil {
+		t.Fatalf("bare chat: %v", err)
 	}
-	if len(plan.Targets) != 1 {
-		t.Fatalf("default chat targets=%d", len(plan.Targets))
-	}
-	plan, err = cat.ResolveWithModality("m", catalog.WireOpenAIResponses, "search_web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Targets) != 1 {
-		t.Fatalf("search_web targets=%d", len(plan.Targets))
+	if _, err := cat.Resolve("m:search", catalog.WireOpenAIResponses); err != nil {
+		t.Fatalf("search facet: %v", err)
 	}
 }
 
-func TestResolveRequiresHintForNonSearchAmbiguity(t *testing.T) {
+// chat+image on the same wire expand; bare resolves without a modality hint.
+func TestExpand_ChatAndImageNoHeader(t *testing.T) {
 	doc := catalog.Document{
 		Providers: map[string]catalog.Provider{
 			"a": {
@@ -92,14 +80,18 @@ func TestResolveRequiresHintForNonSearchAmbiguity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cat.Resolve("m", catalog.WireOpenAIChat); err == nil {
-		t.Fatal("want error for chat+image without X-Catalog-Modality")
+	plan, err := cat.Resolve("m", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
 	}
-	plan, err := cat.ResolveWithModality("m", catalog.WireOpenAIChat, "image")
+	if plan.Targets[0].ProviderRef != "a" {
+		t.Fatalf("bare want provider a, got %+v", plan.Targets[0])
+	}
+	plan, err = cat.Resolve("m:image", catalog.WireOpenAIChat)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.Targets[0].ProviderRef != "b" {
-		t.Fatalf("target=%+v", plan.Targets[0])
+		t.Fatalf("image facet want provider b, got %+v", plan.Targets[0])
 	}
 }

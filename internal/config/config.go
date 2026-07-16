@@ -35,17 +35,14 @@ type File struct {
 		Catalog    string `yaml:"catalog"`
 	} `yaml:"serve"`
 	Credential struct {
-		Backend    string    `yaml:"backend,omitempty"`
-		Broker     string    `yaml:"broker"`
+		Backend    string `yaml:"backend,omitempty"`
+		Broker     string `yaml:"broker"`
 		Encryption struct {
 			KeyEnv  string `yaml:"key_env"`
 			KeyFile string `yaml:"key_file"`
 		} `yaml:"encryption"`
 		BackendConfig yaml.Node `yaml:"backend_config,omitempty"`
 	} `yaml:"credential"`
-	Ingress struct {
-		ClientAuth string `yaml:"client_auth"`
-	} `yaml:"ingress"`
 	Adapters struct {
 		Enable []string `yaml:"enable"`
 	} `yaml:"adapters"`
@@ -90,9 +87,6 @@ func Load(path string) (*File, error) {
 	}
 	if f.Credential.Encryption.KeyEnv == "" {
 		f.Credential.Encryption.KeyEnv = BrokerKeyEnv
-	}
-	if f.Ingress.ClientAuth == "" {
-		f.Ingress.ClientAuth = "keyring"
 	}
 	if len(f.Adapters.Enable) == 0 {
 		f.Adapters.Enable = []string{"passthrough"}

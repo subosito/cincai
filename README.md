@@ -1,6 +1,6 @@
 # Cincai
 
-**Model-oriented AI gateway — pick a model, not a provider.** Point one `base_url` at Cincai, ask for a model (e.g. `glm-5.2`), and it routes to whichever of *your* providers can serve it — API keys or subscription logins (e.g. Grok via OAuth) — with load-balancing, failover, and OpenAI↔Anthropic wire translation. One endpoint, one model name; chat, image, video, speech.
+**Model-oriented AI gateway — pick a model, not a provider.** Point one `base_url` at Cincai, ask for a model by name, and it routes to whichever of *your* providers can serve it — API keys or subscription logins (Grok via OAuth ships in the box) — with load-balancing, failover, and OpenAI↔Anthropic wire translation. One endpoint, one model name; chat, image, video, speech.
 
 **Status:** offline smokes (`just verify-smoke`).
 
