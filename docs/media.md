@@ -132,9 +132,9 @@ Use a gateway key from `cincai keys create`, not an upstream API key.
 
 ---
 
-## Read and transcribe (preprocess)
+## Understand and transcribe
 
-Separate from generation — used when a host preprocesses input before chat:
+Separate from generation — dedicated routes for media input (not multimodal chat in one request):
 
 | Modality | Meaning | Typical wire |
 |----------|---------|--------------|
@@ -144,7 +144,7 @@ Separate from generation — used when a host preprocesses input before chat:
 
 These are **short** modality keys (not `*_gen`). Example stubs are commented in `config/providers.yaml.example`.
 
-Multimodal **chat in one turn** still uses `modalities.chat` on the chat/responses wire — `image` / `video` / `voice` are for dedicated preprocess steps.
+Multimodal **chat in one turn** still uses `modalities.chat` on the chat/responses wire.
 
 ---
 

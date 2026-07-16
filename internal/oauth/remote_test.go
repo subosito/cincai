@@ -7,7 +7,6 @@ import (
 	"github.com/subosito/cincai/internal/oauth"
 
 	// Load vendor providers so their registered callbacks are available, as the CLI does.
-	_ "github.com/subosito/cincai/internal/oauth-providers/anthropic"
 	_ "github.com/subosito/cincai/internal/oauth-providers/xai"
 )
 

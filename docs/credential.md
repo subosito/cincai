@@ -84,7 +84,7 @@ Upstream header shape (`Authorization: Bearer`, `xi-api-key`, custom `inject:` m
 
 ## OAuth (subscription logins)
 
-For providers that use subscription OAuth (Grok, Claude):
+Stock Cincai includes **xAI (Grok)** subscription OAuth. Other providers typically use an **API key** (`cincai credential import`). Extra OAuth providers can be linked via `credential/oauth/pack` (see [architecture.md](architecture.md)).
 
 ```bash
 cincai credential login PROFILE [--flow auto|browser|device|manual] [--config config/cincai.yaml]
@@ -92,10 +92,9 @@ cincai credential login PROFILE [--flow auto|browser|device|manual] [--config co
 
 | Profile | Provider example |
 |---------|------------------|
-| `anthropic` | Claude subscription |
 | `xai` | Grok subscription |
 
-Other OAuth providers can be added through the config-driven generic flow (`authorize_url`, `token_url`, `client_id` in profile config) without shipping their client credentials in code. Use `https` for both endpoints — a plain-`http` `token_url` would send authorization codes and refresh tokens in cleartext.
+Use `https` for authorize/token endpoints — a plain-`http` `token_url` would send codes and refresh tokens in cleartext.
 
 Full remote-server guide: [oauth.md](oauth.md).
 

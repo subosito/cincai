@@ -88,11 +88,11 @@ models:
 
 ## Multimodal chat
 
-Text + image + video in **one turn** uses `modalities.chat` on the chat/responses wire. `modalities.image`, `video`, and `voice` are for **dedicated steps** (preprocess, transcribe) with their own model default and usage accounting.
+Text + image + video in **one turn** uses `modalities.chat` on the chat/responses wire. `modalities.image`, `video`, and `voice` are **dedicated understand/transcribe routes** (their own model default and usage accounting), not multimodal chat-in-one-request.
 
-## Host integration
+## Embedders
 
-When a host embeds Cincai as its gateway, the host maps its own usage components to catalog modality keys (e.g. `preprocess.image` → `image`, `preprocess.voice` → `voice`, `preprocess.video` → `video`). Usage labels stay on the host — independent of the yaml keys.
+When another binary embeds Cincai, map that product’s internal usage components onto these catalog modality keys (`image`, `voice`, `video`, `*_gen`, …). Usage labels and pricing stay on the embedder — independent of the yaml keys.
 
 ## See also
 

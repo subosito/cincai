@@ -3,8 +3,8 @@ package pack_test
 import (
 	"testing"
 
-	_ "github.com/subosito/cincai/link"
 	"github.com/subosito/cincai/credential/oauth/pack"
+	_ "github.com/subosito/cincai/link"
 )
 
 func TestRegisteredOAuthProviders(t *testing.T) {
@@ -15,10 +15,7 @@ func TestRegisteredOAuthProviders(t *testing.T) {
 			profiles[p] = true
 		}
 	}
-	for _, want := range []string{
-		"anthropic",
-		"xai",
-	} {
+	for _, want := range []string{"xai"} {
 		if !profiles[want] {
 			t.Fatalf("missing profile %q; got %v", want, profiles)
 		}

@@ -91,6 +91,10 @@ func materialValues(m store.Material) (key, access, accountID, projectID string)
 		key = strings.TrimSpace(m.APIKey)
 	case store.KindOAuth:
 		access = strings.TrimSpace(m.AccessToken)
+		// Many catalogs write inject maps with ${key} for a single Bearer-shaped secret
+		// (same pattern as imported access tokens stored as api_key). Alias access → key
+		// so OAuth rows work without a second inject template.
+		key = access
 		accountID = m.Extra("account_id")
 		projectID = m.Extra("project_id")
 	}

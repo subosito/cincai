@@ -10,7 +10,6 @@ Works out of the box on your laptop. On a **remote server** (SSH, VPS, headless 
 
 | Profile | Callback URL |
 |---------|----------------|
-| `anthropic` | `http://localhost:54545/callback` |
 | `xai` | `http://127.0.0.1:56121/callback` |
 
 `cincai credential login` prints these hints automatically (stronger message when `SSH_CONNECTION` is set).
@@ -19,7 +18,7 @@ Works out of the box on your laptop. On a **remote server** (SSH, VPS, headless 
 
 ## Remote server: SSH port forwarding (recommended)
 
-1. On your **laptop**, open a tunnel **before** login (example: xAI port `56121`):
+1. On your **laptop**, open a tunnel **before** login (xAI port `56121`):
 
 ```bash
 ssh -L 56121:127.0.0.1:56121 user@your-server
@@ -35,14 +34,6 @@ cincai credential login xai --config config/cincai.yaml
 3. Open the printed **auth URL in your laptop browser** (not on the server). After sign-in, the redirect hits `127.0.0.1:56121` on your laptop; SSH forwards it to the server where `cincai` is listening.
 
 Keep the `ssh -L` session open until you see `logged in id=…`.
-
-### Multiple profiles
-
-Use one `-L` per port, or combine:
-
-```bash
-ssh -L 56121:127.0.0.1:56121 -L 54545:127.0.0.1:54545 user@your-server
-```
 
 ---
 

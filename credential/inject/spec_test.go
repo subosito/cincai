@@ -12,7 +12,7 @@ func TestApplySpecMultiHeaderOAuth(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, "http://example.com", nil)
 	spec := inject.Spec{
 		"authorization": "Bearer ${access}",
-		"x-account-id": "${accountId}",
+		"x-account-id":  "${accountId}",
 	}
 	mat := store.Material{
 		Kind:        store.KindOAuth,
@@ -27,6 +27,19 @@ func TestApplySpecMultiHeaderOAuth(t *testing.T) {
 	}
 	if got := req.Header.Get("x-account-id"); got != "acct-99" {
 		t.Fatalf("account=%q", got)
+	}
+}
+
+func TestApplySpecOAuthKeyAlias(t *testing.T) {
+	// Catalogs often use ${key} for a single Bearer secret; OAuth should fill it from access.
+	req, _ := http.NewRequest(http.MethodPost, "http://example.com", nil)
+	spec := inject.Spec{"authorization": "Bearer ${key}"}
+	mat := store.Material{Kind: store.KindOAuth, AccessToken: "oat-token"}
+	if err := inject.ApplySpec(mat, req, spec); err != nil {
+		t.Fatal(err)
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer oat-token" {
+		t.Fatalf("authorization=%q", got)
 	}
 }
 
