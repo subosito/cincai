@@ -11,7 +11,7 @@ import (
 )
 
 func TestRemoteLoginNotesXAI(t *testing.T) {
-	notes := oauth.RemoteLoginNotes("xai")
+	notes := oauth.RemoteLoginNotes("xai-oauth")
 	if !strings.Contains(notes, "56121") {
 		t.Fatalf("missing port: %q", notes)
 	}
@@ -27,7 +27,7 @@ func TestRemoteLoginNotesUnknownProfile(t *testing.T) {
 }
 
 func TestCallbackForProfile(t *testing.T) {
-	spec, ok := oauth.CallbackForProfile("xai")
+	spec, ok := oauth.CallbackForProfile("xai-oauth")
 	if !ok || spec.Port != 56121 {
 		t.Fatalf("spec=%+v ok=%v", spec, ok)
 	}

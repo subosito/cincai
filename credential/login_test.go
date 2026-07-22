@@ -12,7 +12,7 @@ import (
 
 func TestOAuthProfileVendorWithoutYAML(t *testing.T) {
 	oauthreg.Register()
-	prof, err := credpkg.OAuthProfile(&gateway.ConfigFile{}, "xai")
+	prof, err := credpkg.OAuthProfile(&gateway.ConfigFile{}, "xai-oauth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestVendorProfilesDocumented(t *testing.T) {
 	for _, p := range oauthmod.VendorProfiles() {
 		got[p] = true
 	}
-	for _, want := range []string{"xai", "xai-oauth"} {
+	for _, want := range []string{"xai-oauth"} {
 		if !got[want] {
 			t.Fatalf("missing vendor profile %q; got %v", want, oauthmod.VendorProfiles())
 		}

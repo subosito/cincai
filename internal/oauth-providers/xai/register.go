@@ -6,11 +6,10 @@ import (
 
 func init() {
 	mod := Module{}
-	// "xai" is the vendor module id; "xai-oauth" is the broker/providers.yaml
-	// credential_profile used in prod (ddd). Both must resolve so login,
-	// manual refresh, and on-read auto-refresh can find the module.
+	// OAuth vault / providers.yaml credential_profile always uses the -oauth
+	// suffix. Catalog provider id stays "xai" (no suffix).
 	oauthpack.Register(oauthpack.Entry{
-		Profiles: []string{"xai", "xai-oauth"},
+		Profiles: []string{"xai-oauth"},
 		Login:    mod.Login,
 		Refresh:  mod.Refresh,
 		Callback: oauthpack.Callback{Host: redirectHost, Port: redirectPort, Path: redirectPath},

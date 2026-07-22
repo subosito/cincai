@@ -15,7 +15,7 @@ func TestRegisteredOAuthProviders(t *testing.T) {
 			profiles[p] = true
 		}
 	}
-	for _, want := range []string{"xai"} {
+	for _, want := range []string{"xai-oauth"} {
 		if !profiles[want] {
 			t.Fatalf("missing profile %q; got %v", want, profiles)
 		}
