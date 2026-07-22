@@ -37,14 +37,28 @@ func CopyHeaders(dst *http.Request, src http.Header) {
 }
 
 // clientDeniedRequestHeaders are provider-agnostic client headers that must never reach an
-// upstream: client auth (would leak the gateway key or override the injected credential) and
-// client session/proxy headers. A header only one provider treats as sensitive is stripped by
-// that provider's adapter (see e.g. adaptersdk/upstreamauth.ApplyTranslated), not here.
+// upstream: client auth (would leak the gateway key or override the injected credential),
+// client session/proxy headers, hop-by-hop headers, and client User-Agent.
+//
+// User-Agent matters: Cloudflare (and similar edges) fingerprint browser signatures. Forwarding
+// e.g. Python-urllib/* from the gateway client yields CF 1010 while the same credential works
+// with Go's default UA. Leave UA unset so net/http sends Go-http-client (or set one in an
+// adapter). A header only one provider treats as sensitive is stripped by that provider's
+// adapter (see e.g. adaptersdk/upstreamauth.ApplyTranslated), not here.
 var clientDeniedRequestHeaders = []string{
 	"Authorization",
 	"X-Api-Key", // canonicalises x-api-key too
 	"Cookie",
 	"Proxy-Authorization",
+	"User-Agent",
+	// Hop-by-hop (RFC 7230) — must not be relayed on the outbound hop.
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Connection",
+	"TE",
+	"Trailer",
+	"Transfer-Encoding",
+	"Upgrade",
 }
 
 // StripClient removes client-controlled headers that must not be forwarded upstream.

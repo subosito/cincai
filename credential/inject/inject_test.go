@@ -25,6 +25,8 @@ func TestStripClientDenylist(t *testing.T) {
 	req.Header.Set("x-api-key", "client-key")
 	req.Header.Set("Cookie", "session=abc")
 	req.Header.Set("Proxy-Authorization", "Basic zzz")
+	req.Header.Set("User-Agent", "Python-urllib/3.13")
+	req.Header.Set("Connection", "close")
 	// Headers that pass through: beta flags, content negotiation, and provider-specific
 	// headers (a provider's adapter strips those if needed — not the global function).
 	req.Header.Set("Anthropic-Beta", "prompt-caching-2024")
@@ -34,7 +36,7 @@ func TestStripClientDenylist(t *testing.T) {
 
 	inject.StripClient(req)
 
-	for _, h := range []string{"Authorization", "x-api-key", "Cookie", "Proxy-Authorization"} {
+	for _, h := range []string{"Authorization", "x-api-key", "Cookie", "Proxy-Authorization", "User-Agent", "Connection"} {
 		if got := req.Header.Get(h); got != "" {
 			t.Errorf("denied header %q survived: %q", h, got)
 		}
