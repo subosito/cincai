@@ -192,9 +192,14 @@ func usageFromJSON(raw json.RawMessage) respUsage {
 		TotalTokenCount          int64 `json:"totalTokenCount"`
 		CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 		CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-		PromptTokensDetails      *struct {
+		// OpenAI chat-completions style.
+		PromptTokensDetails *struct {
 			CachedTokens int64 `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
+		// OpenAI/xAI Responses API style (grok-*, etc.).
+		InputTokensDetails *struct {
+			CachedTokens int64 `json:"cached_tokens"`
+		} `json:"input_tokens_details"`
 		CachedContentTokenCount int64 `json:"cachedContentTokenCount"`
 	}
 	if err := json.Unmarshal(raw, &u); err != nil {
@@ -214,6 +219,9 @@ func usageFromJSON(raw json.RawMessage) respUsage {
 	cacheRead := u.CacheReadInputTokens
 	if cacheRead == 0 && u.PromptTokensDetails != nil {
 		cacheRead = u.PromptTokensDetails.CachedTokens
+	}
+	if cacheRead == 0 && u.InputTokensDetails != nil {
+		cacheRead = u.InputTokensDetails.CachedTokens
 	}
 	if cacheRead == 0 {
 		cacheRead = u.CachedContentTokenCount
