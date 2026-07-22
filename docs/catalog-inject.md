@@ -1,14 +1,21 @@
-# Catalog inject (Cincai)
+# Catalog inject — turning stored credentials into upstream headers
 
-Secrets live in `broker.db` (`credential_profile`). Header shaping is in `config/providers.yaml`.
+A stored credential is just a secret; each provider expects it in a different
+place — `Authorization: Bearer`, `x-api-key`, `xi-api-key`, sometimes several
+headers from one OAuth payload. The split of responsibilities: the **secret**
+lives in the encrypted broker under the provider's `credential_profile`, and
+the **header shape** is declared per provider in `config/providers.yaml`. This
+doc covers the shaping side.
 
 ## Resolution order
 
+For each provider, the first of these that applies wins:
+
 ```text
-inject: (map)           → one or more headers
+inject: (map)           → one or more headers, templated from the credential
 inject_preset           → bearer or x-api-key
-adapter default (code)  → vendor adapters (e.g. ElevenLabs)
-bearer
+adapter default (code)  → vendor adapters ship one (e.g. ElevenLabs → xi-api-key)
+bearer                  → the fallback when nothing else is declared
 ```
 
 ## `inject:` — header map

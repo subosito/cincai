@@ -1,10 +1,22 @@
 # Capabilities vs modalities
 
-`providers.yaml` uses explicit names per section — no overloaded short names.
+A word like "image" is ambiguous in a catalog: it could mean a model *understands*
+images (vision input on the chat wire) or *generates* them (an image API). The two
+sections of `providers.yaml` resolve this with explicit names instead of overloaded
+short ones:
+
+- **`providers.*.capabilities`** — what an upstream API surface can do
+  (generation surfaces use the `*_gen` suffix: `image_gen`, `speech_gen`, …).
+- **`models.*.modalities`** — the routes a model exposes to clients
+  (short keys like `image`/`voice` mean read/transcribe; `*_gen` keys mean generate).
+
+The [Rule](#rule) table below is the reference; the rest of this doc walks the shapes.
 
 ## Hybrid expand: multi-modality authoring → flat public model ids
 
-Operators may still group related uses under one model key:
+Clients only ever send a standard path plus a `model` id, so a model that serves
+several uses on the *same* wire needs a distinct public id per use. Operators may
+still group related uses under one model key:
 
 ```yaml
 models:
