@@ -51,7 +51,7 @@ providers:
 The profile string is the **only** link between catalog and broker:
 
 - `cincai credential import deepseek-api --api-key "$DEEPSEEK_API_KEY"`
-- `cincai credential login xai` → profile `xai`
+- `cincai credential login xai-oauth` → profile `xai-oauth`
 
 There is no `credential_profiles` section in `cincai.yaml`. OAuth endpoints and client IDs live in code (vendor modules), not operator yaml.
 
@@ -92,7 +92,7 @@ cincai credential login PROFILE [--flow auto|browser|device|manual] [--config co
 
 | Profile | Provider example |
 |---------|------------------|
-| `xai` | Grok subscription |
+| `xai-oauth` | Grok subscription |
 
 Use `https` for authorize/token endpoints — a plain-`http` `token_url` would send codes and refresh tokens in cleartext.
 
@@ -103,7 +103,7 @@ While `cincai serve` runs, OAuth access tokens refresh automatically (proactive 
 Manual refresh:
 
 ```bash
-cincai credential refresh xai --config config/cincai.yaml
+cincai credential refresh xai-oauth --config config/cincai.yaml
 ```
 
 ---
@@ -136,7 +136,7 @@ set -a && source config/cincai.dev.env && set +a
 
 # 2. Upstream credentials (pick what your catalog uses)
 cincai credential import deepseek-api --api-key "$DEEPSEEK_API_KEY"
-cincai credential login xai --config config/cincai.yaml
+cincai credential login xai-oauth --config config/cincai.yaml
 
 # 3. Gateway client key for your app
 cincai keys create --config config/cincai.yaml

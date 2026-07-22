@@ -29,7 +29,7 @@ cincai catalog validate --config config/cincai.yaml
 cincai serve --help          # flags: docs/cli.md
 cincai keys create --config config/cincai.yaml
 cincai credential import deepseek-api --api-key "$DEEPSEEK_API_KEY"
-# cincai credential login xai
+# cincai credential login xai-oauth
 # Remote server? See docs/oauth.md (ssh -L 56121:127.0.0.1:56121 …)
 cincai serve --config config/cincai.yaml
 just verify-smoke       # offline routing smokes

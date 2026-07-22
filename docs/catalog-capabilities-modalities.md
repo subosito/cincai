@@ -62,7 +62,7 @@ Generation keys always use the `*_gen` suffix in both `capabilities` and `modali
 ```yaml
 providers:
   xai:
-    credential_profile: xai
+    credential_profile: xai-oauth
     capabilities:
       chat:
         protocol: openai-chat-completions

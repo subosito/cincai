@@ -43,7 +43,8 @@ client ── /v1/chat/completions ─▶ ingress auth ─▶ scope check ─▶
 5. **Adapter** (`adaptersdk`, `passthrough`, wire-translate) — translates the ingress
    protocol shape to the provider's, or passes through when they already match.
 6. **Credential inject** (`credential/inject`, `adaptersdk/upstreamauth`) — attaches the
-   provider credential from the broker; strips client auth / cookies / billing headers.
+   provider credential from the broker; strips client auth / cookies / billing headers,
+   plus the client `User-Agent` and hop-by-hop headers.
 7. **Upstream relay** (`upstream`) — outbound HTTP to the provider. Refuses cross-origin
    redirects (so injected credentials can't leak), strips `Set-Cookie` / provider
    identity headers from the response, bounds SSE lines.

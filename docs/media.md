@@ -30,7 +30,7 @@ Generation routes use `*_gen` modality keys on **models** and matching **provide
 ```yaml
 providers:
   xai:
-    credential_profile: xai
+    credential_profile: xai-oauth
     capabilities:
       image_gen:
         adapter: xai
@@ -158,5 +158,5 @@ Media responses can report non-token usage (images, seconds, characters). Cincai
 ## See also
 
 - [routing.md](routing.md) — model pools and failover (works for media models too)
-- [credential.md](credential.md) — `xai`, `elevenlabs-api`, etc.
+- [credential.md](credential.md) — `xai-oauth`, `elevenlabs-api`, etc.
 - [configuration.md](configuration.md) — `cincai.yaml`, adapters, env vars

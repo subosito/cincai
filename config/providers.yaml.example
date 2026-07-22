@@ -13,9 +13,9 @@ providers:
         protocol: openai-chat-completions
         base_url: https://api.deepseek.com
 
-  # xai image adapter + openai-videos passthrough (OAuth: xai)
+  # xai image adapter + openai-videos passthrough (OAuth: xai-oauth)
   xai:
-    credential_profile: xai
+    credential_profile: xai-oauth
     capabilities:
       image_gen:
         adapter: xai

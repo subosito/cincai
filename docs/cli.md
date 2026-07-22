@@ -123,7 +123,7 @@ cincai credential login --list
 | `--callback-listen` | `127.0.0.1:0` | Loopback address for browser OAuth callback |
 | `--list` | — | List vendor OAuth profiles and exit |
 
-Vendor profiles in the stock binary: `xai` (Grok). Other providers use `credential import` with an API key, or a custom OAuth pack linked into your binary.
+Vendor profiles in the stock binary: `xai-oauth` (Grok). Other providers use `credential import` with an API key, or a custom OAuth pack linked into your binary.
 
 Remote servers: see [oauth.md](oauth.md) (SSH port-forward or `--flow manual`).
 

@@ -10,7 +10,7 @@ Works out of the box on your laptop. On a **remote server** (SSH, VPS, headless 
 
 | Profile | Callback URL |
 |---------|----------------|
-| `xai` | `http://127.0.0.1:56121/callback` |
+| `xai-oauth` | `http://127.0.0.1:56121/callback` |
 
 `cincai credential login` prints these hints automatically (stronger message when `SSH_CONNECTION` is set).
 
@@ -28,7 +28,7 @@ ssh -L 56121:127.0.0.1:56121 user@your-server
 
 ```bash
 set -a && source config/cincai.dev.env && set +a
-cincai credential login xai --config config/cincai.yaml
+cincai credential login xai-oauth --config config/cincai.yaml
 ```
 
 3. Open the printed **auth URL in your laptop browser** (not on the server). After sign-in, the redirect hits `127.0.0.1:56121` on your laptop; SSH forwards it to the server where `cincai` is listening.
@@ -42,7 +42,7 @@ Keep the `ssh -L` session open until you see `logged in id=…`.
 Paste the redirect URL on the machine running `cincai`:
 
 ```bash
-cincai credential login xai --flow manual --config config/cincai.yaml
+cincai credential login xai-oauth --flow manual --config config/cincai.yaml
 ```
 
 1. Open the printed URL in any browser (phone, laptop, etc.).
@@ -79,7 +79,7 @@ cincai credential login PROFILE --flow device
 `cincai serve` refreshes OAuth access tokens automatically on read (proactive near expiry + reactive on upstream 401), so profiles stay live while the gateway runs. To refresh manually:
 
 ```bash
-cincai credential refresh xai --config config/cincai.yaml
+cincai credential refresh xai-oauth --config config/cincai.yaml
 ```
 
 **One refresher per broker:** don't run two processes that refresh grants against the same `broker.db` at the same time — they can invalidate each other.
