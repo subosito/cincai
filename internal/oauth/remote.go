@@ -56,19 +56,24 @@ func RemoteLoginNotes(profile string) string {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	redirect := fmt.Sprintf("http://%s:%d%s", host, spec.Port, spec.Path)
+	path := spec.Path
+	if path == "" {
+		path = "/callback"
+	}
+	redirect := fmt.Sprintf("http://%s:%d%s", host, spec.Port, path)
 
 	var b strings.Builder
+	// Port first — this is what operators need for ssh -L / export.
+	fmt.Fprintf(&b, "OAuth callback port: %d\n", spec.Port)
+	fmt.Fprintf(&b, "OAuth callback URL:  %s\n", redirect)
 	if LikelyRemoteShell() {
-		fmt.Fprintf(&b, "Remote session detected — OAuth callback listens on %s.\n", redirect)
-		fmt.Fprintf(&b, "From your laptop, forward the port before opening the auth URL:\n")
+		fmt.Fprintf(&b, "Remote session detected — forward the port from your laptop before opening the auth URL:\n")
 		fmt.Fprintf(&b, "  ssh -L %d:127.0.0.1:%d user@YOUR_HOST\n", spec.Port, spec.Port)
-		fmt.Fprintf(&b, "Then open the login URL in your local browser (not on the server).\n")
+		fmt.Fprintf(&b, "Then open the login URL in your *local* browser (not on the server).\n")
 	} else {
-		fmt.Fprintf(&b, "OAuth callback: %s (loopback on the machine running cincai).\n", redirect)
-		fmt.Fprintf(&b, "If cincai runs on a remote server, use SSH port-forward:\n")
+		fmt.Fprintf(&b, "Loopback on the machine running login. If login runs on a remote host, forward first:\n")
 		fmt.Fprintf(&b, "  ssh -L %d:127.0.0.1:%d user@YOUR_HOST\n", spec.Port, spec.Port)
 	}
-	fmt.Fprintf(&b, "Alternative without port-forward: cincai credential login %s --flow manual\n", profile)
+	fmt.Fprintf(&b, "Alternative without port-forward: chacha credential login %s --flow manual\n", profile)
 	return b.String()
 }

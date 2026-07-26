@@ -15,6 +15,9 @@ func TestRemoteLoginNotesXAI(t *testing.T) {
 	if !strings.Contains(notes, "56121") {
 		t.Fatalf("missing port: %q", notes)
 	}
+	if !strings.Contains(notes, "OAuth callback port:") {
+		t.Fatalf("missing port label: %q", notes)
+	}
 	if !strings.Contains(notes, "--flow manual") {
 		t.Fatalf("missing manual hint: %q", notes)
 	}

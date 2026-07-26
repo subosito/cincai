@@ -51,9 +51,22 @@ func Login(ctx context.Context, opts LoginOptions) (int64, error) {
 	if errOut == nil {
 		errOut = os.Stderr
 	}
+	// Print port-forward / callback hints *before* the authorize URL so operators
+	// see the export port even if they only glance at the "Open:" line block.
+	if flow != generic.FlowManual {
+		if notes := oauthmod.RemoteLoginNotes(opts.Profile); notes != "" {
+			fmt.Fprintln(errOut)
+			fmt.Fprint(errOut, notes)
+		}
+	}
 	ctrl := generic.Controller{
 		OnAuth: func(info generic.AuthInfo) {
 			fmt.Fprintln(errOut)
+			// Repeat port next to Open: — easy to miss when notes scrolled above.
+			if spec, ok := oauthmod.CallbackForProfile(opts.Profile); ok && spec.Port > 0 {
+				fmt.Fprintf(errOut, "Callback port: %d  (ssh -L %d:127.0.0.1:%d …)\n",
+					spec.Port, spec.Port, spec.Port)
+			}
 			if info.UserCode != "" {
 				fmt.Fprintf(errOut, "User code: %s\n", info.UserCode)
 			}
@@ -72,8 +85,6 @@ func Login(ctx context.Context, opts LoginOptions) (int64, error) {
 			read = readManualInput
 		}
 		ctrl.OnManualInput = read
-	} else if notes := oauthmod.RemoteLoginNotes(opts.Profile); notes != "" {
-		fmt.Fprint(errOut, notes)
 	}
 	mat, err := vendor.Login(ctx, opts.Profile, prof, flow, callback, ctrl)
 	if err != nil {
