@@ -49,6 +49,8 @@ func (e *Engine) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/audio/speech", e.withAuth(catalog.WireOpenAIAudioSpeech))
 	mux.HandleFunc("POST /v1/audio/transcriptions", e.withAuth(catalog.WireOpenAIAudioTranscriptions))
 	mux.HandleFunc("POST /v1/videos/generations", e.withAuth(catalog.WireOpenAIVideos))
+	mux.HandleFunc("POST /v1/videos/edits", e.withAuth(catalog.WireOpenAIVideos))
+	mux.HandleFunc("POST /v1/videos/extensions", e.withAuth(catalog.WireOpenAIVideos))
 	mux.HandleFunc("GET /v1/videos/{id}", e.withAuth(catalog.WireOpenAIVideos))
 	return observability.IngressLog("", mux)
 }
@@ -412,7 +414,7 @@ func validateWireMethod(r *http.Request, wireID string) error {
 		}
 	case catalog.WireOpenAIVideos:
 		switch r.URL.Path {
-		case "/v1/videos/generations":
+		case "/v1/videos/generations", "/v1/videos/edits", "/v1/videos/extensions":
 			if r.Method != http.MethodPost {
 				return errMethodNotAllowed
 			}

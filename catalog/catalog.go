@@ -124,10 +124,10 @@ func WireForPath(path string) (string, bool) {
 		return WireOpenAIAudioSpeech, true
 	case "/v1/audio/transcriptions":
 		return WireOpenAIAudioTranscriptions, true
-	case "/v1/videos/generations":
+	case "/v1/videos/generations", "/v1/videos/edits", "/v1/videos/extensions":
 		return WireOpenAIVideos, true
 	default:
-		if strings.HasPrefix(path, "/v1/videos/") && path != "/v1/videos/generations" {
+		if strings.HasPrefix(path, "/v1/videos/") {
 			return WireOpenAIVideos, true
 		}
 		return "", false
