@@ -155,3 +155,71 @@ func TestRevokedKey(t *testing.T) {
 		t.Fatal("expected revoked rejection")
 	}
 }
+
+func TestSetScopes(t *testing.T) {
+	ks := keyring.NewMemoryStore()
+	secret, id, err := ks.Create(context.Background(), "scoped", keyring.KindStatic, 0, []string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"model:demo", "wire:openai-chat-completions"}
+	if err := ks.SetScopes(context.Background(), id, want); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ks.Verify(context.Background(), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Scopes) != 2 || p.Scopes[0] != want[0] || p.Scopes[1] != want[1] {
+		t.Fatalf("scopes=%v want %v", p.Scopes, want)
+	}
+	list, err := ks.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || len(list[0].Scopes) != 2 {
+		t.Fatalf("list scopes=%v", list)
+	}
+	// Same secret still works after scope change.
+	if _, err := ks.Verify(context.Background(), secret); err != nil {
+		t.Fatal(err)
+	}
+	if err := ks.SetScopes(context.Background(), 999, want); err == nil {
+		t.Fatal("expected not found")
+	}
+	if err := ks.Revoke(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if err := ks.SetScopes(context.Background(), id, want); err == nil {
+		t.Fatal("expected revoked rejection")
+	}
+}
+
+func TestSQLStoreSetScopes(t *testing.T) {
+	key, _ := seal.ParseKey("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH=")
+	path := filepath.Join(t.TempDir(), "broker.db")
+	st, err := store.OpenSQLite(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	db, err := store.BrokerDB(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks := keyring.NewSQLStore(db)
+	secret, id, err := ks.Create(context.Background(), "sql", keyring.KindStatic, 0, []string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ks.SetScopes(context.Background(), id, []string{"model:x"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ks.Verify(context.Background(), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Scopes) != 1 || p.Scopes[0] != "model:x" {
+		t.Fatalf("scopes=%v", p.Scopes)
+	}
+}

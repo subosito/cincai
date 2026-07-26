@@ -23,6 +23,8 @@ func keysCmd(args []string) int {
 		return keysCreateCmd(args[1:])
 	case "list":
 		return keysListCmd(args[1:])
+	case "set-scopes":
+		return keysSetScopesCmd(args[1:])
 	case "revoke":
 		return keysRevokeCmd(args[1:])
 	case "help", "-h", "--help":
@@ -77,12 +79,7 @@ func keysCreateCmd(args []string) int {
 		}
 	}
 
-	var scopes []string
-	for _, s := range strings.Split(*scopesStr, ",") {
-		if t := strings.TrimSpace(s); t != "" {
-			scopes = append(scopes, t)
-		}
-	}
+	scopes := parseScopesCSV(*scopesStr)
 	secret, id, err := ks.Create(context.Background(), *name, kind, ttl, scopes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cincai keys create: %v\n", err)
@@ -130,6 +127,56 @@ func keysListCmd(args []string) int {
 	return 0
 }
 
+func keysSetScopesCmd(args []string) int {
+	fs := newFlagSet("keys set-scopes")
+	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
+	scopesStr := fs.String("scopes", "", "comma-separated scopes (model:ID, wire:ID, or *); required")
+	if wantsHelp(args) {
+		printCommandHelp("cincai keys set-scopes — replace scopes on an existing key (no secret rotation)",
+			"  cincai keys set-scopes ID --scopes model:demo,wire:openai-chat-completions [flags]", fs)
+		return 0
+	}
+	rest := flagsFirstCredential(args)
+	if err := parseFlags(fs, rest); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "cincai keys set-scopes: key ID required (see: cincai keys list)")
+		return 2
+	}
+	if strings.TrimSpace(*scopesStr) == "" {
+		fmt.Fprintln(os.Stderr, "cincai keys set-scopes: --scopes is required")
+		return 2
+	}
+	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-scopes: invalid key ID %q\n", fs.Arg(0))
+		return 2
+	}
+	scopes := parseScopesCSV(*scopesStr)
+
+	cfgFile, err := gateway.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-scopes: %v\n", err)
+		return 1
+	}
+	resolveBrokerPath(cfgFile, *configPath)
+
+	st, ks, err := gateway.OpenStore(cfgFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-scopes: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+
+	if err := ks.SetScopes(context.Background(), id, scopes); err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-scopes: %v\n", err)
+		return 1
+	}
+	fmt.Printf("id=%d scopes=%v\n", id, scopes)
+	return 0
+}
+
 func keysRevokeCmd(args []string) int {
 	fs := newFlagSet("keys revoke")
 	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
@@ -174,6 +221,16 @@ func keysRevokeCmd(args []string) int {
 	return 0
 }
 
+func parseScopesCSV(s string) []string {
+	var scopes []string
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			scopes = append(scopes, t)
+		}
+	}
+	return scopes
+}
+
 func resolveBrokerPath(cfgFile *gateway.ConfigFile, configPath string) {
 	base := filepath.Dir(configPath)
 	brokerPath := cfgFile.Credential.Broker
@@ -196,6 +253,7 @@ func printKeysUsage() {
 Usage:
   cincai keys create [flags]
   cincai keys list [flags]
+  cincai keys set-scopes ID --scopes model:ID,wire:ID [flags]
   cincai keys revoke ID [flags]
 
 Run "cincai keys <subcommand> --help" for flags.

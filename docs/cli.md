@@ -221,6 +221,19 @@ cincai keys list [flags]
 |------|---------|-------------|
 | `--config` | `config/cincai.yaml` | Path to gateway config file |
 
+### `set-scopes`
+
+```bash
+cincai keys set-scopes ID --scopes model:demo,wire:openai-chat-completions [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | `config/cincai.yaml` | Path to gateway config file |
+| `--scopes` | *(required)* | New scopes (replaces all existing scopes) |
+
+Updates scopes **in place** — the secret (`sk-dg-…`) is unchanged. Rejects unknown or revoked key IDs. Takes effect on the next request (no gateway restart).
+
 ### `revoke`
 
 ```bash

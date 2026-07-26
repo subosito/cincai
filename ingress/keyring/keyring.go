@@ -33,6 +33,9 @@ type KeyStore interface {
 	Verify(ctx context.Context, secret string) (Principal, error)
 	List(ctx context.Context) ([]KeyMeta, error)
 	Revoke(ctx context.Context, id int64) error
+	// SetScopes replaces scopes on an existing key without rotating the secret.
+	// Empty scopes mean "allow all" (same as Create). Revoked keys are rejected.
+	SetScopes(ctx context.Context, id int64, scopes []string) error
 }
 
 // KeyMeta is gateway key metadata.
@@ -241,6 +244,26 @@ func (s *SQLStore) Revoke(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *SQLStore) SetScopes(ctx context.Context, id int64, scopes []string) error {
+	scopesEnc, err := encodeScopes(scopes)
+	if err != nil {
+		return err
+	}
+	var revoked int
+	err = s.db.QueryRowContext(ctx, `SELECT revoked FROM gateway_keys WHERE id = ?`, id).Scan(&revoked)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("gateway key %d not found", id)
+	}
+	if err != nil {
+		return err
+	}
+	if revoked != 0 {
+		return fmt.Errorf("gateway key %d is revoked", id)
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE gateway_keys SET scopes = ? WHERE id = ?`, scopesEnc, id)
+	return err
+}
+
 // MemoryStore is an in-memory KeyStore for tests.
 type MemoryStore struct {
 	records []memoryRecord
@@ -313,6 +336,23 @@ func (m *MemoryStore) Revoke(ctx context.Context, id int64) error {
 			m.records[i].meta.Revoked = true
 			return nil
 		}
+	}
+	return fmt.Errorf("gateway key %d not found", id)
+}
+
+func (m *MemoryStore) SetScopes(ctx context.Context, id int64, scopes []string) error {
+	_ = ctx
+	for i := range m.records {
+		if m.records[i].meta.ID != id {
+			continue
+		}
+		if m.records[i].meta.Revoked {
+			return fmt.Errorf("gateway key %d is revoked", id)
+		}
+		cp := append([]string(nil), scopes...)
+		m.records[i].scopes = cp
+		m.records[i].meta.Scopes = append([]string(nil), cp...)
+		return nil
 	}
 	return fmt.Errorf("gateway key %d not found", id)
 }
