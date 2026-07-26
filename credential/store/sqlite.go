@@ -80,7 +80,10 @@ func (s *SQLite) migrate() error {
 			return err
 		}
 	}
-	return s.migrateV2()
+	if err := s.migrateV2(); err != nil {
+		return err
+	}
+	return s.migrateV3()
 }
 
 func (s *SQLite) migrateV2() error {
@@ -91,6 +94,30 @@ func (s *SQLite) migrateV2() error {
 	}
 	_, _ = s.db.Exec(`ALTER TABLE gateway_keys ADD COLUMN scopes TEXT`)
 	_, err := s.db.Exec(`INSERT INTO schema_migrations (version) VALUES (2)`)
+	return err
+}
+
+// migrateV3: per-key rolling token budgets + usage chip ledger.
+func (s *SQLite) migrateV3() error {
+	var ver int
+	_ = s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&ver)
+	if ver >= 3 {
+		return nil
+	}
+	_, _ = s.db.Exec(`ALTER TABLE gateway_keys ADD COLUMN budget_max_tokens INTEGER`)
+	_, _ = s.db.Exec(`ALTER TABLE gateway_keys ADD COLUMN budget_window_sec INTEGER`)
+	_, _ = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS key_budget_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			key_id INTEGER NOT NULL,
+			principal_id TEXT NOT NULL DEFAULT '',
+			tokens INTEGER NOT NULL,
+			created_at INTEGER NOT NULL
+		)`)
+	_, _ = s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_key_budget_usage_key_created
+			ON key_budget_usage(key_id, created_at)`)
+	_, err := s.db.Exec(`INSERT INTO schema_migrations (version) VALUES (3)`)
 	return err
 }
 

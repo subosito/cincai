@@ -23,8 +23,21 @@ CREATE TABLE IF NOT EXISTS gateway_keys (
     expires_at INTEGER,
     scopes TEXT,
     revoked INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    budget_max_tokens INTEGER,
+    budget_window_sec INTEGER
+);
+
+-- Append-only chips for rolling token budgets (SUM over window).
+CREATE TABLE IF NOT EXISTS key_budget_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_id INTEGER NOT NULL,
+    principal_id TEXT NOT NULL DEFAULT '',
+    tokens INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_key_budget_usage_key_created
+    ON key_budget_usage(key_id, created_at);
 
 CREATE TABLE IF NOT EXISTS snapshot_meta (
     id INTEGER PRIMARY KEY CHECK (id = 1),

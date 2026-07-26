@@ -247,6 +247,24 @@ cincai keys set-name ID --name friend-alice [flags]
 
 Renames **in place** — the secret is unchanged. Rejects empty names and unknown/revoked IDs.
 
+### `set-limits`
+
+```bash
+cincai keys set-limits ID --max-tokens 500000 [--window 24h]
+cincai keys set-limits ID --max-tokens 0          # clear budget
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | `config/cincai.yaml` | Path to gateway config file |
+| `--max-tokens` | *(required)* | Rolling budget of **input+output** tokens; `0` clears |
+| `--window` | `24h` | Rolling window (`time.ParseDuration`, e.g. `24h`, `168h`) |
+
+When set, the data plane **rejects** further authenticated requests with **HTTP 429**
+(`usage_limit_exceeded`) once measured tokens in the window reach the cap. Usage is
+counted after each successful response (slight overshoot on the last call is possible).
+`keys list` shows `budget_max_tokens`, `budget_window`, and current `budget_used`.
+
 ### `revoke`
 
 ```bash

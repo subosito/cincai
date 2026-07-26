@@ -116,7 +116,28 @@ func (e *Engine) withAuth(wireID string) http.HandlerFunc {
 		if rec := observability.RecorderFrom(r.Context()); rec != nil {
 			rec.PrincipalID = p.ID
 		}
+		// Pre-request rolling token budget (scopes still apply inside handleWire).
+		if e.Auth != nil && e.Auth.Store != nil && p.HasBudget() {
+			st, err := keyring.CheckBudget(r.Context(), e.Auth.Store, p)
+			if err != nil {
+				if errors.Is(err, keyring.ErrBudgetExceeded) {
+					keyring.WriteBudgetExceeded(w, st)
+					return
+				}
+				slog.ErrorContext(r.Context(), "budget check", "principal", p.ID, "err", err)
+				http.Error(w, "budget check failed", http.StatusInternalServerError)
+				return
+			}
+		}
 		e.handleWire(w, r, p, wireID)
+		// Post-request: count measured tokens toward the rolling ledger.
+		if e.Auth != nil && e.Auth.Store != nil && p.HasBudget() {
+			if rec := observability.RecorderFrom(r.Context()); rec != nil {
+				if err := keyring.RecordBudgetTokens(r.Context(), e.Auth.Store, p, rec.Usage.InputTokens, rec.Usage.OutputTokens); err != nil {
+					slog.ErrorContext(r.Context(), "budget record", "principal", p.ID, "err", err)
+				}
+			}
+		}
 	}
 }
 

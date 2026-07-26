@@ -27,6 +27,8 @@ func keysCmd(args []string) int {
 		return keysSetScopesCmd(args[1:])
 	case "set-name":
 		return keysSetNameCmd(args[1:])
+	case "set-limits":
+		return keysSetLimitsCmd(args[1:])
 	case "revoke":
 		return keysRevokeCmd(args[1:])
 	case "help", "-h", "--help":
@@ -123,8 +125,21 @@ func keysListCmd(args []string) int {
 		return 1
 	}
 	for _, k := range keys {
-		fmt.Printf("id=%d name=%s kind=%s scopes=%v expires=%s revoked=%v\n",
+		line := fmt.Sprintf("id=%d name=%s kind=%s scopes=%v expires=%s revoked=%v",
 			k.ID, k.Name, k.Kind, k.Scopes, formatKeyExpiry(k.ExpiresAt), k.Revoked)
+		if k.BudgetMaxTokens > 0 {
+			win := time.Duration(k.BudgetWindowSec) * time.Second
+			if win <= 0 {
+				win = keyring.DefaultBudgetWindow
+			}
+			used, err := ks.BudgetUsed(context.Background(), k.ID, win)
+			if err != nil {
+				line += fmt.Sprintf(" budget_max_tokens=%d budget_window=%s budget_used=?", k.BudgetMaxTokens, win)
+			} else {
+				line += fmt.Sprintf(" budget_max_tokens=%d budget_window=%s budget_used=%d", k.BudgetMaxTokens, win, used)
+			}
+		}
+		fmt.Println(line)
 	}
 	return 0
 }
@@ -228,6 +243,76 @@ func keysSetNameCmd(args []string) int {
 	return 0
 }
 
+func keysSetLimitsCmd(args []string) int {
+	fs := newFlagSet("keys set-limits")
+	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
+	maxTok := fs.Int64("max-tokens", -1, "rolling token budget (input+output); 0 clears the limit")
+	windowStr := fs.String("window", "24h", "rolling window (e.g. 24h, 168h); ignored when clearing")
+	if wantsHelp(args) {
+		printCommandHelp("cincai keys set-limits — set rolling token budget on a key",
+			"  cincai keys set-limits ID --max-tokens 500000 [--window 24h]\n  cincai keys set-limits ID --max-tokens 0", fs)
+		return 0
+	}
+	rest := flagsFirstCredential(args)
+	if err := parseFlags(fs, rest); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "cincai keys set-limits: key ID required (see: cincai keys list)")
+		return 2
+	}
+	if *maxTok < 0 {
+		fmt.Fprintln(os.Stderr, "cincai keys set-limits: --max-tokens is required (>=0; 0 clears)")
+		return 2
+	}
+	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-limits: invalid key ID %q\n", fs.Arg(0))
+		return 2
+	}
+	var window time.Duration
+	if *maxTok > 0 {
+		window, err = time.ParseDuration(*windowStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cincai keys set-limits: window: %v\n", err)
+			return 1
+		}
+		if window < time.Second {
+			fmt.Fprintln(os.Stderr, "cincai keys set-limits: window must be >= 1s")
+			return 2
+		}
+	}
+
+	cfgFile, err := gateway.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-limits: %v\n", err)
+		return 1
+	}
+	resolveBrokerPath(cfgFile, *configPath)
+
+	st, ks, err := gateway.OpenStore(cfgFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-limits: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+
+	if err := ks.SetBudget(context.Background(), id, *maxTok, window); err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-limits: %v\n", err)
+		return 1
+	}
+	if *maxTok == 0 {
+		fmt.Printf("id=%d budget=cleared\n", id)
+		return 0
+	}
+	if window <= 0 {
+		window = keyring.DefaultBudgetWindow
+	}
+	used, _ := ks.BudgetUsed(context.Background(), id, window)
+	fmt.Printf("id=%d budget_max_tokens=%d budget_window=%s budget_used=%d\n", id, *maxTok, window, used)
+	return 0
+}
+
 func keysRevokeCmd(args []string) int {
 	fs := newFlagSet("keys revoke")
 	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
@@ -306,6 +391,7 @@ Usage:
   cincai keys list [flags]
   cincai keys set-scopes ID --scopes model:ID,wire:ID [flags]
   cincai keys set-name ID --name NAME [flags]
+  cincai keys set-limits ID --max-tokens N [--window 24h]
   cincai keys revoke ID [flags]
 
 Run "cincai keys <subcommand> --help" for flags.
