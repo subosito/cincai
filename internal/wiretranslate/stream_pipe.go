@@ -12,12 +12,15 @@ import (
 )
 
 // translateAnthropicStreamToOpenAI pipes Anthropic SSE → OpenAI chat SSE incrementally
-// so clients (e.g. mow) receive token deltas live rather than after upstream EOF.
+// so clients receive token deltas live rather than after upstream EOF.
+//
+// Takes ownership of r: if r is an io.Closer it is closed when the pipe finishes.
 func translateAnthropicStreamToOpenAI(r io.Reader, model string) (*http.Response, error) {
 	pr, pw := io.Pipe()
 	enc := newOpenAIStreamEncoder(pw, model)
 	go func() {
 		var err error
+		defer closeUpstream(r)
 		defer func() {
 			if err != nil {
 				_ = pw.CloseWithError(err)
@@ -37,11 +40,13 @@ func translateAnthropicStreamToOpenAI(r io.Reader, model string) (*http.Response
 }
 
 // translateOpenAIStreamToAnthropic pipes OpenAI chat SSE → Anthropic SSE incrementally.
+// Takes ownership of r (closes it if io.Closer when the pipe finishes).
 func translateOpenAIStreamToAnthropic(r io.Reader, model string) (*http.Response, error) {
 	pr, pw := io.Pipe()
 	enc := newAnthropicStreamEncoder(pw, model)
 	go func() {
 		var err error
+		defer closeUpstream(r)
 		defer func() {
 			if err != nil {
 				_ = pw.CloseWithError(err)
@@ -60,6 +65,12 @@ func translateOpenAIStreamToAnthropic(r io.Reader, model string) (*http.Response
 	return sseResponse(pr), nil
 }
 
+func closeUpstream(r io.Reader) {
+	if c, ok := r.(io.Closer); ok {
+		_ = c.Close()
+	}
+}
+
 // --- OpenAI chat.completion.chunk encoder (incremental) ---
 
 type openAIStreamEncoder struct {
@@ -71,6 +82,11 @@ type openAIStreamEncoder struct {
 	wrote       bool
 	finish      string
 	toolStarted map[int]bool
+	// Accumulated from KindUsage (Anthropic message_start / message_delta, OpenAI stream).
+	inputTok  int
+	outputTok int
+	cacheRead int
+	cacheWrite int
 }
 
 func newOpenAIStreamEncoder(w io.Writer, model string) *openAIStreamEncoder {
@@ -99,6 +115,52 @@ func (e *openAIStreamEncoder) writeChunk(choices []map[string]any) error {
 	e.wrote = true
 	_, err = fmt.Fprintf(e.w, "data: %s\n\n", raw)
 	return err
+}
+
+// writeUsageChunk emits a terminal OpenAI usage frame (empty choices + usage).
+// wire meters this even when injectIncludeUsage strips it from the client stream.
+func (e *openAIStreamEncoder) writeUsageChunk() error {
+	if e.inputTok <= 0 && e.outputTok <= 0 && e.cacheRead <= 0 && e.cacheWrite <= 0 {
+		return nil
+	}
+	usage := map[string]any{
+		"prompt_tokens":     e.inputTok,
+		"completion_tokens": e.outputTok,
+		"total_tokens":      e.inputTok + e.outputTok,
+	}
+	if e.cacheRead > 0 {
+		usage["prompt_tokens_details"] = map[string]any{"cached_tokens": e.cacheRead}
+	}
+	payload := map[string]any{
+		"id":      e.chunkID,
+		"object":  "chat.completion.chunk",
+		"created": e.created,
+		"model":   e.model,
+		"choices": []any{},
+		"usage":   usage,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	e.wrote = true
+	_, err = fmt.Fprintf(e.w, "data: %s\n\n", raw)
+	return err
+}
+
+func (e *openAIStreamEncoder) applyUsage(ev messages.StreamEvent) {
+	if ev.InputTokens > 0 {
+		e.inputTok = ev.InputTokens
+	}
+	if ev.OutputTokens > 0 {
+		e.outputTok = ev.OutputTokens
+	}
+	if ev.CacheReadTokens > 0 {
+		e.cacheRead = ev.CacheReadTokens
+	}
+	if ev.CacheWriteTokens > 0 {
+		e.cacheWrite = ev.CacheWriteTokens
+	}
 }
 
 func (e *openAIStreamEncoder) ensureRole() error {
@@ -172,6 +234,8 @@ func (e *openAIStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		if s := strings.TrimSpace(ev.Message); s != "" {
 			e.finish = mapOpenAIFinish(s)
 		}
+	case messages.KindUsage:
+		e.applyUsage(ev)
 	case messages.KindMessageStop:
 		if err := e.ensureRole(); err != nil {
 			return err
@@ -201,6 +265,11 @@ func (e *openAIStreamEncoder) Close() error {
 		}}); err != nil {
 			return err
 		}
+	}
+	// After content/finish: emit usage so gateway metering and clients that
+	// requested stream_options.include_usage see token counts.
+	if err := e.writeUsageChunk(); err != nil {
+		return err
 	}
 	_, err := fmt.Fprintf(e.w, "data: [DONE]\n\n")
 	return err
@@ -235,6 +304,7 @@ type anthropicStreamEncoder struct {
 	textIndex   int
 	toolBlocks  map[int]bool
 	stopReason  string
+	inputTok    int
 	outputTok   int
 	wrote       bool
 }
@@ -361,7 +431,12 @@ func (e *anthropicStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 			e.stopReason = s
 		}
 	case messages.KindUsage:
-		e.outputTok = ev.OutputTokens
+		if ev.OutputTokens > 0 {
+			e.outputTok = ev.OutputTokens
+		}
+		if ev.InputTokens > 0 {
+			e.inputTok = ev.InputTokens
+		}
 	case messages.KindMessageStop:
 		if err := e.ensureMessageStart(); err != nil {
 			return err
@@ -374,10 +449,14 @@ func (e *anthropicStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 				return err
 			}
 		}
+		usage := map[string]any{"output_tokens": e.outputTok}
+		if e.inputTok > 0 {
+			usage["input_tokens"] = e.inputTok
+		}
 		if err := e.write("message_delta", map[string]any{
 			"type":  "message_delta",
 			"delta": map[string]any{"stop_reason": e.stopReason, "stop_sequence": nil},
-			"usage": map[string]any{"output_tokens": e.outputTok},
+			"usage": usage,
 		}); err != nil {
 			return err
 		}

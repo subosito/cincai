@@ -388,7 +388,9 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 			resp.Body.Close()
 			continue
 		}
-		defer resp.Body.Close()
+		// CopyResponse / CopyResponseWithUsage own and close resp.Body.
+		// Adapters must not Close a body they hand back for streaming; async
+		// pipes (wire-translate) keep the upstream body open until drained.
 		if meter := usageMeterFor(wireID); meter != nil {
 			meter.encoding = resp.Header.Get("Content-Encoding")
 			var drop func([]byte) bool

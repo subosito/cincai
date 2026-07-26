@@ -27,21 +27,23 @@ func TestStripClientDenylist(t *testing.T) {
 	req.Header.Set("Proxy-Authorization", "Basic zzz")
 	req.Header.Set("User-Agent", "Python-urllib/3.13")
 	req.Header.Set("Connection", "close")
-	// Headers that pass through: beta flags, content negotiation, and provider-specific
-	// headers (a provider's adapter strips those if needed — not the global function).
+	req.Header.Set("Accept-Encoding", "gzip")
+	// Headers that pass through: beta flags, content negotiation (except Accept-Encoding),
+	// and provider-specific headers (a provider's adapter strips those if needed).
 	req.Header.Set("Anthropic-Beta", "prompt-caching-2024")
 	req.Header.Set("OpenAI-Beta", "assistants=v2")
 	req.Header.Set("OpenAI-Organization", "org-x")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
 
 	inject.StripClient(req)
 
-	for _, h := range []string{"Authorization", "x-api-key", "Cookie", "Proxy-Authorization", "User-Agent", "Connection"} {
+	for _, h := range []string{"Authorization", "x-api-key", "Cookie", "Proxy-Authorization", "User-Agent", "Connection", "Accept-Encoding"} {
 		if got := req.Header.Get(h); got != "" {
 			t.Errorf("denied header %q survived: %q", h, got)
 		}
 	}
-	for _, h := range []string{"Anthropic-Beta", "OpenAI-Beta", "OpenAI-Organization", "Content-Type"} {
+	for _, h := range []string{"Anthropic-Beta", "OpenAI-Beta", "OpenAI-Organization", "Content-Type", "Accept"} {
 		if req.Header.Get(h) == "" {
 			t.Errorf("pass-through header %q was wrongly stripped", h)
 		}

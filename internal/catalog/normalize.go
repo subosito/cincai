@@ -114,6 +114,11 @@ func cincaiModality(name string) string {
 	switch strings.TrimSpace(name) {
 	case "chat":
 		return "chat"
+	// Second chat path on a different wire (e.g. openai-chat-completions
+	// alongside openai-responses for the same model id). Stays nested on the
+	// bare id because expand only facets same-wire collisions.
+	case "chat_completions":
+		return "chat_completions"
 	case "embed":
 		return "embed"
 	case "image":
@@ -227,7 +232,7 @@ func aliasProtocol(protocol string) string {
 
 func poolSurface(modality string) string {
 	switch modality {
-	case "chat":
+	case "chat", "chat_completions":
 		return "chat"
 	case "anthropic_chat":
 		return "anthropic_chat"

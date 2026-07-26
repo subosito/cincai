@@ -72,6 +72,26 @@ embeddings. Ingress paths and their wire ids:
 reach an Anthropic-shaped provider and vice-versa, so `/v1/chat/completions` and
 `/v1/messages` both work regardless of the upstream's native protocol.
 
+OpenAI→Anthropic (`wire-translate-o2a`) maps each ingress `role=system` /
+`developer` message to its own Anthropic `system` text block (order preserved).
+A single system message stays a plain string. Translators must not join multiple
+system segments into one string — some upstreams treat system as an ordered list
+of segments (auth gates, prompt caching).
+
+**Streaming body ownership:** when an adapter returns a response whose body is
+filled asynchronously (e.g. `io.Pipe` translating upstream SSE), it must not
+`Close` the upstream body before the pipe finishes. Closing in a `defer` on the
+`Forward` return path empties the client stream. The pipe owns the upstream body
+and closes it after translation; `wire` then streams the client-facing body via
+`upstream.CopyResponse` / `CopyResponseWithUsage`.
+
+**Preferred wire on `GET /v1/models`:** the `wire` field is the client default.
+It follows the authoring modality named `chat` (or `anthropic_chat`) so dual-wire
+models advertise their native protocol first (e.g. Anthropic Messages, OpenAI
+Responses). Secondary paths such as `modalities.chat_completions` with
+`openai-chat-completions` stay in `wires[]` for clients that only speak that
+protocol, without forcing translation when a model selector can set the right wire.
+
 ## Catalog and routing
 
 `providers.yaml` defines two things:

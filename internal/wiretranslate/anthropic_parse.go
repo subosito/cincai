@@ -46,23 +46,41 @@ func parseAnthropicFrame(eventName string, data []byte) ([]messages.StreamEvent,
 			Message struct {
 				ID    string `json:"id"`
 				Model string `json:"model"`
+				Usage *struct {
+					InputTokens              int `json:"input_tokens"`
+					OutputTokens             int `json:"output_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+				} `json:"usage"`
 			} `json:"message"`
 		}
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, err
 		}
-		return []messages.StreamEvent{{
+		out := []messages.StreamEvent{{
 			Kind:      messages.KindMessageStart,
 			MessageID: raw.Message.ID,
 			Model:     raw.Message.Model,
-		}}, nil
+		}}
+		if u := raw.Message.Usage; u != nil && (u.InputTokens > 0 || u.OutputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0) {
+			out = append(out, messages.StreamEvent{
+				Kind:             messages.KindUsage,
+				InputTokens:      u.InputTokens,
+				OutputTokens:     u.OutputTokens,
+				CacheReadTokens:  u.CacheReadInputTokens,
+				CacheWriteTokens: u.CacheCreationInputTokens,
+			})
+		}
+		return out, nil
 	case "message_stop":
 		return []messages.StreamEvent{{Kind: messages.KindMessageStop}}, nil
 	case "message_delta":
 		var raw struct {
 			Usage struct {
-				InputTokens  int `json:"input_tokens"`
-				OutputTokens int `json:"output_tokens"`
+				InputTokens              int `json:"input_tokens"`
+				OutputTokens             int `json:"output_tokens"`
+				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 			} `json:"usage"`
 			Delta struct {
 				StopReason string `json:"stop_reason"`
@@ -72,11 +90,13 @@ func parseAnthropicFrame(eventName string, data []byte) ([]messages.StreamEvent,
 			return nil, err
 		}
 		out := []messages.StreamEvent{{Kind: messages.KindTelemetry, Message: raw.Delta.StopReason}}
-		if raw.Usage.InputTokens > 0 || raw.Usage.OutputTokens > 0 {
+		if raw.Usage.InputTokens > 0 || raw.Usage.OutputTokens > 0 || raw.Usage.CacheReadInputTokens > 0 || raw.Usage.CacheCreationInputTokens > 0 {
 			out = append(out, messages.StreamEvent{
-				Kind:         messages.KindUsage,
-				InputTokens:  raw.Usage.InputTokens,
-				OutputTokens: raw.Usage.OutputTokens,
+				Kind:             messages.KindUsage,
+				InputTokens:      raw.Usage.InputTokens,
+				OutputTokens:     raw.Usage.OutputTokens,
+				CacheReadTokens:  raw.Usage.CacheReadInputTokens,
+				CacheWriteTokens: raw.Usage.CacheCreationInputTokens,
 			})
 		}
 		return out, nil

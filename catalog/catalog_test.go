@@ -189,6 +189,84 @@ func TestPreferredChatWire(t *testing.T) {
 	}
 }
 
+// Dual-wire models: GET /v1/models.wire follows modalities.chat (native), not
+// the chat_completions secondary path.
+func TestListModels_prefersNativeChatModality(t *testing.T) {
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"anth": {
+				CredentialProfile: "anth",
+				Surfaces: map[string]catalog.Surface{
+					"anthropic_chat": {Protocol: "anthropic-messages", BaseURL: "https://api.example"},
+				},
+			},
+			"xai": {
+				CredentialProfile: "xai",
+				Surfaces: map[string]catalog.Surface{
+					"chat":      {Protocol: "openai-chat-completions", BaseURL: "https://api.example"},
+					"responses": {Protocol: "openai-responses", BaseURL: "https://api.example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"claude-x": {
+				Modalities: map[string]catalog.Modality{
+					"chat_completions": {
+						Wire:      catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{{ProviderRef: "anth", Surface: "anthropic_chat", Model: "claude-x"}},
+					},
+					"chat": {
+						Wire:      catalog.WireAnthropicMsg,
+						Providers: []catalog.PoolEntry{{ProviderRef: "anth", Surface: "anthropic_chat", Model: "claude-x"}},
+					},
+				},
+			},
+			"grok-x": {
+				Modalities: map[string]catalog.Modality{
+					"chat_completions": {
+						Wire:      catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{{ProviderRef: "xai", Surface: "chat", Model: "grok-x"}},
+					},
+					"chat": {
+						Wire:      catalog.WireOpenAIResponses,
+						Providers: []catalog.PoolEntry{{ProviderRef: "xai", Surface: "responses", Model: "grok-x"}},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]catalog.ModelListItem{}
+	for _, it := range cat.ListModels().Data {
+		byID[it.ID] = it
+	}
+	if got := byID["claude-x"].Wire; got != catalog.WireAnthropicMsg {
+		t.Fatalf("claude-x wire=%q want %q (native chat modality)", got, catalog.WireAnthropicMsg)
+	}
+	if got := byID["grok-x"].Wire; got != catalog.WireOpenAIResponses {
+		t.Fatalf("grok-x wire=%q want %q (native chat modality)", got, catalog.WireOpenAIResponses)
+	}
+	// Secondary path still listed.
+	if !containsWire(byID["claude-x"].Wires, catalog.WireOpenAIChat) {
+		t.Fatalf("claude-x wires missing chat-completions: %v", byID["claude-x"].Wires)
+	}
+	if !containsWire(byID["grok-x"].Wires, catalog.WireOpenAIChat) {
+		t.Fatalf("grok-x wires missing chat-completions: %v", byID["grok-x"].Wires)
+	}
+}
+
+func containsWire(wires []string, want string) bool {
+	for _, w := range wires {
+		if w == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestWireForPathResponses(t *testing.T) {
 	wire, ok := catalog.WireForPath("/v1/responses")
 	if !ok || wire != catalog.WireOpenAIResponses {

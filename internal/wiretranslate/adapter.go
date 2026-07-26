@@ -66,8 +66,8 @@ func forwardA2O(ctx context.Context, client *http.Client, t handler.Target, raw 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		return passthroughError(resp)
 	}
 	model := strings.TrimSpace(ingress.Model)
@@ -75,8 +75,10 @@ func forwardA2O(ctx context.Context, client *http.Client, t handler.Target, raw 
 		model = t.UpstreamModel
 	}
 	if ingress.Stream {
+		// Transfer resp.Body ownership to the stream pipe (do not Close here).
 		return translateOpenAIStreamToAnthropic(resp.Body, model)
 	}
+	defer resp.Body.Close()
 	outRaw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -105,8 +107,8 @@ func forwardO2A(ctx context.Context, client *http.Client, t handler.Target, raw 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		return passthroughError(resp)
 	}
 	model := strings.TrimSpace(ingress.Model)
@@ -114,8 +116,10 @@ func forwardO2A(ctx context.Context, client *http.Client, t handler.Target, raw 
 		model = t.UpstreamModel
 	}
 	if ingress.Stream {
+		// Transfer resp.Body ownership to the stream pipe (do not Close here).
 		return translateAnthropicStreamToOpenAI(resp.Body, model)
 	}
+	defer resp.Body.Close()
 	outRaw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

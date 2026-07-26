@@ -45,12 +45,18 @@ func CopyHeaders(dst *http.Request, src http.Header) {
 // with Go's default UA. Leave UA unset so net/http sends Go-http-client (or set one in an
 // adapter). A header only one provider treats as sensitive is stripped by that provider's
 // adapter (see e.g. adaptersdk/upstreamauth.ApplyTranslated), not here.
+//
+// Accept-Encoding must not be forwarded: net/http's Transport only auto-decompresses gzip when
+// it added Accept-Encoding itself. If the ingress client (Go SDK, mow, …) already set
+// Accept-Encoding: gzip and we copy it upstream, the Transport leaves the body compressed and
+// stream parsers see binary garbage → empty chat streams with a synthetic stop.
 var clientDeniedRequestHeaders = []string{
 	"Authorization",
 	"X-Api-Key", // canonicalises x-api-key too
 	"Cookie",
 	"Proxy-Authorization",
 	"User-Agent",
+	"Accept-Encoding",
 	// Hop-by-hop (RFC 7230) — must not be relayed on the outbound hop.
 	"Connection",
 	"Keep-Alive",

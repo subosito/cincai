@@ -25,7 +25,7 @@ func openAIToAnthropicRequest(raw []byte, upstreamModel string) ([]byte, error) 
 		"stream":     req.Stream,
 		"messages":   msgs,
 	}
-	if system != "" {
+	if system != nil {
 		out["system"] = system
 	}
 	if len(req.Tools) > 0 {
@@ -51,7 +51,15 @@ func openAIToAnthropicRequest(raw []byte, upstreamModel string) ([]byte, error) 
 	return json.Marshal(out)
 }
 
-func openAIMessagesToAnthropic(msgs []openaiMessage) (system string, out []map[string]any, err error) {
+// openAIMessagesToAnthropic maps OpenAI messages to Anthropic messages + system.
+//
+// Multiple role=system / developer messages become separate Anthropic system
+// text blocks (not joined with newlines). Upstream Anthropic-shaped APIs and
+// some auth gates treat system as an ordered list of segments; collapsing them
+// into one string can change auth or caching behavior. A single system message
+// stays a plain string so simple clients and third-party hosts keep the
+// historical shape.
+func openAIMessagesToAnthropic(msgs []openaiMessage) (system any, out []map[string]any, err error) {
 	var systemParts []string
 	for _, m := range msgs {
 		role := strings.TrimSpace(m.Role)
@@ -63,7 +71,7 @@ func openAIMessagesToAnthropic(msgs []openaiMessage) (system string, out []map[s
 		case "user":
 			content, err := openAIUserToAnthropic(m)
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			if content != nil {
 				out = append(out, map[string]any{"role": "user", "content": content})
@@ -71,7 +79,7 @@ func openAIMessagesToAnthropic(msgs []openaiMessage) (system string, out []map[s
 		case "assistant":
 			content, err := openAIAssistantToAnthropic(m)
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			if content != nil {
 				msg := map[string]any{"role": "assistant", "content": content}
@@ -92,9 +100,24 @@ func openAIMessagesToAnthropic(msgs []openaiMessage) (system string, out []map[s
 		}
 	}
 	if len(out) == 0 {
-		return "", nil, fmt.Errorf("wire-translate: no messages")
+		return nil, nil, fmt.Errorf("wire-translate: no messages")
 	}
-	return strings.Join(systemParts, "\n"), out, nil
+	return anthropicSystemFromParts(systemParts), out, nil
+}
+
+func anthropicSystemFromParts(parts []string) any {
+	switch len(parts) {
+	case 0:
+		return nil
+	case 1:
+		return parts[0]
+	default:
+		blocks := make([]map[string]any, 0, len(parts))
+		for _, p := range parts {
+			blocks = append(blocks, map[string]any{"type": "text", "text": p})
+		}
+		return blocks
+	}
 }
 
 func openAIMessageText(content any) string {

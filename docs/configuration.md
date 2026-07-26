@@ -58,7 +58,9 @@ adapters:
 The bundled pack is exactly these five drivers; `providers.yaml.example` shows one provider per adapter pattern. Add providers/models and pools as needed.
 
 - **passthrough** — relay when ingress wire matches upstream protocol
-- **wire-translate** — OpenAI ↔ Anthropic protocol conversion
+- **wire-translate** — OpenAI ↔ Anthropic protocol conversion (including
+  multi-system-message → separate Anthropic system text blocks on the
+  OpenAI→Anthropic path; see [architecture.md](architecture.md))
 - **xai** — image generation
 - **elevenlabs** — speech generation
 - **mistral** — chat, and OCR translated onto the chat wire

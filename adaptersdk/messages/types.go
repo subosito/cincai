@@ -45,8 +45,10 @@ type StreamEvent struct {
 	Message string
 	Code    string
 
-	InputTokens  int
-	OutputTokens int
+	InputTokens      int
+	OutputTokens     int
+	CacheReadTokens  int
+	CacheWriteTokens int
 
 	MessageID string
 	Model     string

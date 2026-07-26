@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/subosito/cincai/ingress/keyring"
 )
@@ -65,7 +66,7 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 			Object:  "model",
 			Created: c.loadedAt,
 			OwnedBy: "cincai",
-			Wire:    PreferredChatWire(wires),
+			Wire:    preferredWireForModel(m, wires),
 			Wires:   wires,
 		})
 	}
@@ -87,8 +88,24 @@ func modelWires(m Model) []string {
 	return out
 }
 
-// PreferredChatWire picks the best client wire for an agent/chat harness.
-// Prefer OpenAI chat completions (mow's primary path), then Anthropic Messages,
+// preferredWireForModel is the wire advertised as GET /v1/models `wire`.
+// Prefer the authoring modality named "chat" (or "anthropic_chat") so dual-wire
+// models keep their native protocol as default — e.g. Claude → anthropic-messages,
+// Grok → openai-responses — while openai-chat-completions stays available as a
+// secondary path for clients that only speak that wire. Fall back to PreferredChatWire.
+func preferredWireForModel(m Model, wires []string) string {
+	for _, key := range []string{"chat", "anthropic_chat"} {
+		if md, ok := m.Modalities[key]; ok {
+			if w := strings.TrimSpace(md.Wire); w != "" {
+				return w
+			}
+		}
+	}
+	return PreferredChatWire(wires)
+}
+
+// PreferredChatWire picks a chat wire when modality authoring did not name a
+// primary "chat" row. Prefer OpenAI chat completions, then Anthropic Messages,
 // then OpenAI Responses; otherwise the first sorted wire.
 func PreferredChatWire(wires []string) string {
 	if len(wires) == 0 {
