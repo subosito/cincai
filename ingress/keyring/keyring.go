@@ -36,6 +36,9 @@ type KeyStore interface {
 	// SetScopes replaces scopes on an existing key without rotating the secret.
 	// Empty scopes mean "allow all" (same as Create). Revoked keys are rejected.
 	SetScopes(ctx context.Context, id int64, scopes []string) error
+	// SetName renames an existing key without rotating the secret.
+	// Name is the principal_id shown in usage logs. Revoked keys are rejected.
+	SetName(ctx context.Context, id int64, name string) error
 }
 
 // KeyMeta is gateway key metadata.
@@ -249,8 +252,28 @@ func (s *SQLStore) SetScopes(ctx context.Context, id int64, scopes []string) err
 	if err != nil {
 		return err
 	}
+	if err := s.requireActiveKey(ctx, id); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE gateway_keys SET scopes = ? WHERE id = ?`, scopesEnc, id)
+	return err
+}
+
+func (s *SQLStore) SetName(ctx context.Context, id int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if err := s.requireActiveKey(ctx, id); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE gateway_keys SET name = ? WHERE id = ?`, name, id)
+	return err
+}
+
+func (s *SQLStore) requireActiveKey(ctx context.Context, id int64) error {
 	var revoked int
-	err = s.db.QueryRowContext(ctx, `SELECT revoked FROM gateway_keys WHERE id = ?`, id).Scan(&revoked)
+	err := s.db.QueryRowContext(ctx, `SELECT revoked FROM gateway_keys WHERE id = ?`, id).Scan(&revoked)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("gateway key %d not found", id)
 	}
@@ -260,8 +283,7 @@ func (s *SQLStore) SetScopes(ctx context.Context, id int64, scopes []string) err
 	if revoked != 0 {
 		return fmt.Errorf("gateway key %d is revoked", id)
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE gateway_keys SET scopes = ? WHERE id = ?`, scopesEnc, id)
-	return err
+	return nil
 }
 
 // MemoryStore is an in-memory KeyStore for tests.
@@ -352,6 +374,25 @@ func (m *MemoryStore) SetScopes(ctx context.Context, id int64, scopes []string) 
 		cp := append([]string(nil), scopes...)
 		m.records[i].scopes = cp
 		m.records[i].meta.Scopes = append([]string(nil), cp...)
+		return nil
+	}
+	return fmt.Errorf("gateway key %d not found", id)
+}
+
+func (m *MemoryStore) SetName(ctx context.Context, id int64, name string) error {
+	_ = ctx
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	for i := range m.records {
+		if m.records[i].meta.ID != id {
+			continue
+		}
+		if m.records[i].meta.Revoked {
+			return fmt.Errorf("gateway key %d is revoked", id)
+		}
+		m.records[i].meta.Name = name
 		return nil
 	}
 	return fmt.Errorf("gateway key %d not found", id)

@@ -234,6 +234,19 @@ cincai keys set-scopes ID --scopes model:demo,wire:openai-chat-completions [flag
 
 Updates scopes **in place** — the secret (`sk-dg-…`) is unchanged. Rejects unknown or revoked key IDs. Takes effect on the next request (no gateway restart).
 
+### `set-name`
+
+```bash
+cincai keys set-name ID --name friend-alice [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | `config/cincai.yaml` | Path to gateway config file |
+| `--name` | *(required)* | New display name (`principal_id` in usage logs) |
+
+Renames **in place** — the secret is unchanged. Rejects empty names and unknown/revoked IDs.
+
 ### `revoke`
 
 ```bash

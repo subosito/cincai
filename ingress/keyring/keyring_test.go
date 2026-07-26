@@ -195,6 +195,36 @@ func TestSetScopes(t *testing.T) {
 	}
 }
 
+func TestSetName(t *testing.T) {
+	ks := keyring.NewMemoryStore()
+	secret, id, err := ks.Create(context.Background(), "old", keyring.KindStatic, 0, []string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ks.SetName(context.Background(), id, "new-name"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ks.Verify(context.Background(), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ID != "new-name" {
+		t.Fatalf("principal id=%q want new-name", p.ID)
+	}
+	if err := ks.SetName(context.Background(), id, "  "); err == nil {
+		t.Fatal("expected empty name rejection")
+	}
+	if err := ks.SetName(context.Background(), 999, "x"); err == nil {
+		t.Fatal("expected not found")
+	}
+	if err := ks.Revoke(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if err := ks.SetName(context.Background(), id, "after-revoke"); err == nil {
+		t.Fatal("expected revoked rejection")
+	}
+}
+
 func TestSQLStoreSetScopes(t *testing.T) {
 	key, _ := seal.ParseKey("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH=")
 	path := filepath.Join(t.TempDir(), "broker.db")

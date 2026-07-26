@@ -25,6 +25,8 @@ func keysCmd(args []string) int {
 		return keysListCmd(args[1:])
 	case "set-scopes":
 		return keysSetScopesCmd(args[1:])
+	case "set-name":
+		return keysSetNameCmd(args[1:])
 	case "revoke":
 		return keysRevokeCmd(args[1:])
 	case "help", "-h", "--help":
@@ -177,6 +179,55 @@ func keysSetScopesCmd(args []string) int {
 	return 0
 }
 
+func keysSetNameCmd(args []string) int {
+	fs := newFlagSet("keys set-name")
+	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
+	name := fs.String("name", "", "new display name (principal_id in logs); required")
+	if wantsHelp(args) {
+		printCommandHelp("cincai keys set-name — rename an existing key (no secret rotation)",
+			"  cincai keys set-name ID --name friend-alice [flags]", fs)
+		return 0
+	}
+	rest := flagsFirstCredential(args)
+	if err := parseFlags(fs, rest); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "cincai keys set-name: key ID required (see: cincai keys list)")
+		return 2
+	}
+	if strings.TrimSpace(*name) == "" {
+		fmt.Fprintln(os.Stderr, "cincai keys set-name: --name is required")
+		return 2
+	}
+	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-name: invalid key ID %q\n", fs.Arg(0))
+		return 2
+	}
+
+	cfgFile, err := gateway.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-name: %v\n", err)
+		return 1
+	}
+	resolveBrokerPath(cfgFile, *configPath)
+
+	st, ks, err := gateway.OpenStore(cfgFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-name: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+
+	if err := ks.SetName(context.Background(), id, *name); err != nil {
+		fmt.Fprintf(os.Stderr, "cincai keys set-name: %v\n", err)
+		return 1
+	}
+	fmt.Printf("id=%d name=%s\n", id, strings.TrimSpace(*name))
+	return 0
+}
+
 func keysRevokeCmd(args []string) int {
 	fs := newFlagSet("keys revoke")
 	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
@@ -254,6 +305,7 @@ Usage:
   cincai keys create [flags]
   cincai keys list [flags]
   cincai keys set-scopes ID --scopes model:ID,wire:ID [flags]
+  cincai keys set-name ID --name NAME [flags]
   cincai keys revoke ID [flags]
 
 Run "cincai keys <subcommand> --help" for flags.
