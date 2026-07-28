@@ -53,9 +53,11 @@ adapters:
     - xai
     - elevenlabs
     - mistral
+    - vertex
 ```
 
-The bundled pack is exactly these five drivers; `providers.yaml.example` shows one provider per adapter pattern. Add providers/models and pools as needed.
+The bundled pack is these drivers; `providers.yaml.example` shows one provider
+per adapter pattern. Add providers/models and pools as needed.
 
 - **passthrough** — relay when ingress wire matches upstream protocol
 - **wire-translate** — OpenAI ↔ Anthropic protocol conversion (including
@@ -64,7 +66,8 @@ The bundled pack is exactly these five drivers; `providers.yaml.example` shows o
 - **xai** — image generation
 - **elevenlabs** — speech generation
 - **mistral** — chat, and OCR translated onto the chat wire
-
+- **vertex** — OpenAI chat → Gemini `generateContent` (GCP Vertex or any
+  compatible base_url; convert helpers in package `adapters/gemini`)
 Naming a driver here that no linked adapter provides is an error at startup, so a
 typo fails fast rather than at route time. Enabling a driver you have no catalog
 entry for is harmless. `cincai catalog validate` checks both directions: it fails

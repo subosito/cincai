@@ -52,6 +52,18 @@ providers:
         adapter: mistral
         base_url: https://api.mistral.ai
 
+  # Gemini generateContent (adapter: vertex). Works with GCP Vertex AI or any
+  # host that exposes …/publishers/{publisher}/models/{model}:generateContent.
+  # Auth: API key or OAuth access token as Bearer (credential import / login).
+  # Replace PROJECT and LOCATION with your GCP values.
+  #
+  # vertex:
+  #   credential_profile: vertex-api
+  #   capabilities:
+  #     chat:
+  #       adapter: vertex
+  #       base_url: https://aiplatform.googleapis.com/v1/projects/PROJECT/locations/LOCATION
+
 models:
   # --- chat ---------------------------------------------------------------
   deepseek-v4-flash:
@@ -105,3 +117,13 @@ models:
       ocr:
         wire: openai-chat-completions
         provider_ref: mistral
+
+  # --- Gemini via generateContent (vertex adapter) ------------------------
+  # Uncomment the vertex provider above, then:
+  #
+  # gemini-3.6-flash:
+  #   modalities:
+  #     chat:
+  #       wire: openai-chat-completions
+  #       provider_ref: vertex
+  #       model: google/gemini-3.6-flash

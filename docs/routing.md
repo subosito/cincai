@@ -124,6 +124,17 @@ Update these when vendors rename products — keep the *pattern*, not a frozen y
 | `grok-imagine-video` | xai | video gen |
 | `eleven_v3` | elevenlabs | speech |
 | `mistral-ocr-latest` | mistral | OCR via chat |
+| `gemini-3.6-flash` (commented) | vertex | Gemini generateContent |
+
+### Vertex / generateContent
+
+Adapter name: `vertex`. OpenAI `/v1/chat/completions` is translated to Gemini
+`generateContent` / `streamGenerateContent`. Set `base_url` to a Vertex project
+root or any generateContent-compatible host; pool `model:` is usually
+`google/<model-id>`.
+
+Shared conversion lives in public package
+[`adapters/gemini`](../adapters/gemini) (tools, multimodal, thinking budget).
 
 ## See also
 

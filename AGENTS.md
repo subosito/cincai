@@ -45,6 +45,7 @@ SKUs). Prefer recent, widely available model ids that match the bundled adapters
 | Pattern | Example public id | Notes |
 |---------|-------------------|--------|
 | Chat passthrough | `deepseek-v4-flash` | OpenAI chat + optional Anthropic translate |
+| Gemini generateContent | `gemini-3.6-flash` | adapter `vertex` + `adapters/gemini` convert |
 | Image gen | `grok-imagine-image-quality` | xAI image adapter |
 | Video gen | `grok-imagine-video` | OpenAI videos passthrough |
 | Speech | `eleven_v3` | ElevenLabs TTS |
@@ -65,9 +66,11 @@ See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 ## Layout and the public/internal split
 
 - **Public packages** (top-level) are the integration surface: `adaptersdk` (write an
-  adapter), `gateway` (embed the server), `catalog`, `compose`/`pack`/`link`/`register`
-  (assemble adapters + OAuth into a binary), `credential/...`, `ingress/...`,
-  `upstream`, `observability`, `wire`.
+  adapter), `adapters/gemini` (OpenAI ↔ generateContent convert helpers), `gateway`
+  (embed the server), `catalog`, `compose`/`pack`/`link`/`register` (assemble adapters +
+  OAuth into a binary), `credential/...`, `ingress/...`, `upstream`, `observability`,
+  `wire`. The **vertex** adapter (GCP Vertex / generateContent base URLs) is registered
+  via `link` (`internal/adapters/vertex`).
 - **`internal/`** is implementation detail and not a compatibility surface. If something
   an integrator genuinely needs is trapped in `internal/`, that's a bug to fix by adding
   a public re-export (see `gateway/config_export.go` for the pattern) — don't tell people

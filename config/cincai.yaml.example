@@ -25,6 +25,7 @@ adapters:
     - xai
     - elevenlabs
     - mistral
+    - vertex
 
 # OAuth profiles: cincai credential login <profile> (vendor modules — see cincai credential login --list)
 # API keys: cincai credential import <profile> --api-key …

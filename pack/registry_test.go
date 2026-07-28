@@ -13,7 +13,7 @@ func TestRegisteredAdapters(t *testing.T) {
 	for _, a := range pack.Adapters() {
 		names[a.Name()] = true
 	}
-	for _, want := range []string{"wire-translate", "xai", "mistral", "elevenlabs"} {
+	for _, want := range []string{"wire-translate", "xai", "mistral", "elevenlabs", "vertex"} {
 		if !names[want] {
 			t.Fatalf("missing adapter %q; got %v", want, names)
 		}

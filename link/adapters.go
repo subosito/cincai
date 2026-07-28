@@ -14,5 +14,6 @@ package link
 import (
 	_ "github.com/subosito/cincai/internal/adapters/elevenlabs"
 	_ "github.com/subosito/cincai/internal/adapters/mistral"
+	_ "github.com/subosito/cincai/internal/adapters/vertex"
 	_ "github.com/subosito/cincai/internal/adapters/xai"
 )
