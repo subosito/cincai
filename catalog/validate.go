@@ -17,6 +17,9 @@ func (c *Catalog) ValidateRoutes() error {
 	var errs []string
 	for _, modelID := range modelIDs {
 		m := c.doc.Models[modelID]
+		if err := ValidateEffortConfig(modelID, m); err != nil {
+			errs = append(errs, err.Error())
+		}
 		modNames := make([]string, 0, len(m.Modalities))
 		for name := range m.Modalities {
 			modNames = append(modNames, name)

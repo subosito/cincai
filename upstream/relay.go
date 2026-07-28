@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/subosito/cincai/credential/inject"
@@ -46,15 +48,70 @@ type Client struct {
 	HTTP *http.Client
 }
 
+// NewClient returns the default upstream client (honors HTTP(S)_PROXY env).
 func NewClient() *Client {
+	return ClientFor("")
+}
+
+// ProxyDirect forces no proxy even when HTTP(S)_PROXY is set in the environment.
+// Use as providers.<id>.proxy when a global env proxy must not apply.
+const ProxyDirect = "direct"
+
+var (
+	clientMu    sync.Mutex
+	clientCache = map[string]*Client{}
+)
+
+// ClientFor returns a shared upstream client for the given provider proxy URL.
+//
+//	"" or unset  → ProxyFromEnvironment (same as historical NewClient)
+//	"direct"     → no proxy (ignore env)
+//	"http://…"   → fixed HTTP(S) proxy URL
+func ClientFor(proxy string) *Client {
+	key := normalizeProxyKey(proxy)
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	if c, ok := clientCache[key]; ok {
+		return c
+	}
+	c := &Client{HTTP: &http.Client{Transport: newTransport(key), Timeout: 0, CheckRedirect: checkRedirect}}
+	clientCache[key] = c
+	return c
+}
+
+func normalizeProxyKey(proxy string) string {
+	p := strings.TrimSpace(proxy)
+	if p == "" {
+		return ""
+	}
+	if strings.EqualFold(p, ProxyDirect) || p == "none" || p == "off" {
+		return ProxyDirect
+	}
+	return p
+}
+
+func newTransport(proxyKey string) *http.Transport {
 	tr := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: DefaultTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	return &Client{HTTP: &http.Client{Transport: tr, Timeout: 0, CheckRedirect: checkRedirect}}
+	switch proxyKey {
+	case "":
+		tr.Proxy = http.ProxyFromEnvironment
+	case ProxyDirect:
+		tr.Proxy = nil
+	default:
+		u, err := url.Parse(proxyKey)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			// Invalid config: fall back to env rather than hard-failing all traffic.
+			tr.Proxy = http.ProxyFromEnvironment
+		} else {
+			tr.Proxy = http.ProxyURL(u)
+		}
+	}
+	return tr
 }
 
 // checkRedirect refuses redirects that leave the original origin. Go strips only

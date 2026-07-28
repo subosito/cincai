@@ -101,13 +101,15 @@ openssl rand -base64 32
 The catalog defines **providers** (upstream APIs + credentials) and **models** (what clients request).
 
 - Provider generate surfaces: `capabilities.image_gen`, `video_gen`, `speech_gen`, `chat`, …
+- Optional per provider: `proxy` (fixed HTTP(S) proxy or `direct`) — see [routing.md](routing.md#provider-proxy-optional)
 - Model routes: `modalities.chat`, `image_gen`, `voice`, …
+- Optional per model: `efforts`, `default_effort` when upstream uses tiered model names — see [routing.md](routing.md#reasoning-effort-optional)
 
 See:
 
 - [catalog-capabilities-modalities.md](catalog-capabilities-modalities.md) — naming rules
 - [catalog-inject.md](catalog-inject.md) — upstream header injection
-- [routing.md](routing.md) — model pools and failover
+- [routing.md](routing.md) — model pools, failover, proxy, efforts
 - [media.md](media.md) — image, speech, video wires
 
 `credential_profile` on each provider must match a profile stored in `broker.db` via `cincai credential import` or `cincai credential login`. There is no `credential_profiles` block in `cincai.yaml`.

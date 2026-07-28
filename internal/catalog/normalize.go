@@ -45,6 +45,10 @@ func normalizeCapabilitiesProvider(entry map[string]any) (map[string]any, bool) 
 	if cp := fields.String(entry["credential_profile"]); cp != "" {
 		out["credential_profile"] = cp
 	}
+	// Optional per-provider HTTP(S) proxy (e.g. antigravity → gost).
+	if proxy := fields.String(entry["proxy"]); proxy != "" {
+		out["proxy"] = proxy
+	}
 	CopyInjectFields(entry, out)
 	surfaces := make(map[string]any, len(caps))
 	for capName, raw := range caps {
@@ -107,6 +111,12 @@ func normalizeModelSpec(spec map[string]any) map[string]any {
 		outMods[target] = normalizeModalityRoute(route, modName, target)
 	}
 	out := map[string]any{"modalities": outMods}
+	// Preserve model-level effort metadata (not modality-scoped).
+	for _, k := range []string{"efforts", "default_effort"} {
+		if v, ok := spec[k]; ok {
+			out[k] = v
+		}
+	}
 	return out
 }
 

@@ -3,11 +3,20 @@
 #
 # Naming: docs/catalog-capabilities-modalities.md
 # Inject: docs/catalog-inject.md
+#
+# Optional per provider:
+#   proxy: http://127.0.0.1:8080   # fixed HTTP(S) proxy for this provider only
+#   proxy: direct                 # ignore process HTTP(S)_PROXY for this provider
+# Optional per model (when upstream encodes effort in the model name):
+#   efforts: [low, medium, high]  # list only tiers your upstream accepts
+#   default_effort: medium        # used when the client omits reasoning_effort
+#   pool model: example-model-medium  # default-tier SKU; request effort rewrites the suffix
 
 providers:
   # passthrough (API key: deepseek-api)
   deepseek:
     credential_profile: deepseek-api
+    # proxy: http://127.0.0.1:8080   # optional egress proxy for this provider
     capabilities:
       chat:
         protocol: openai-chat-completions
@@ -52,6 +61,20 @@ models:
       anthropic_chat:
         wire: anthropic-messages
         provider_ref: deepseek
+
+  # --- effort tiers (optional pattern) ---------------------------------
+  # Public id stays lean; upstream still uses a tiered SKU. List only working tiers.
+  #
+  # example-model:
+  #   efforts: [low, medium, high]
+  #   default_effort: medium
+  #   modalities:
+  #     chat:
+  #       wire: openai-chat-completions
+  #       provider_ref: deepseek
+  #       model: example-model-medium
+  # Client: {"model":"example-model","reasoning_effort":"high",…}
+  # → upstream model becomes example-model-high (suffix rewrite).
 
   grok-imagine-image-quality:
     modalities:

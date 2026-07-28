@@ -59,6 +59,28 @@ func TestExpandWireCollisions_GrokStyle(t *testing.T) {
 	if _, err := cat.Resolve("grok-4.3:search_web", catalog.WireOpenAIResponses); err == nil {
 		t.Fatal("expected search_web to expand as :search, not :search_web")
 	}
+
+	// GET /v1/models advertises facet from modalities (not by parsing id colons).
+	// No base field — clients filter on facet alone.
+	byID := map[string]catalog.ModelListItem{}
+	for _, it := range cat.ListModels().Data {
+		byID[it.ID] = it
+	}
+	wantFacet := map[string]string{
+		"grok-4.3":          "chat",
+		"grok-4.3:image":    "image",
+		"grok-4.3:search":   "search",
+		"grok-4.3:search_x": "search_x",
+	}
+	for id, want := range wantFacet {
+		it, ok := byID[id]
+		if !ok {
+			t.Fatalf("missing list row %q", id)
+		}
+		if it.Facet != want {
+			t.Fatalf("%s facet=%q want %q", id, it.Facet, want)
+		}
+	}
 }
 
 func TestExpandWireCollisions_DifferentWiresStayNested(t *testing.T) {

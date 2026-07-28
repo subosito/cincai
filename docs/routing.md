@@ -59,6 +59,57 @@ quality/param metadata and failover should respect it — don't drop onto a
 materially worse variant without meaning to. Good catalogs encode that metadata
 so failover can respect it.
 
+## Provider proxy (optional)
+
+Some upstreams need a fixed egress path (corporate proxy, geo workarounds). Set
+`proxy` on the **provider**, not the model:
+
+```yaml
+providers:
+  vendor:
+    credential_profile: vendor-api
+    proxy: http://127.0.0.1:8080   # or "direct" to ignore HTTP(S)_PROXY
+    capabilities:
+      chat:
+        protocol: openai-chat-completions
+        base_url: https://api.example.com
+```
+
+| Value | Effect |
+|-------|--------|
+| *(omit / empty)* | Process default (`HTTP_PROXY` / `HTTPS_PROXY` / `ProxyFromEnvironment`) |
+| `http://host:port` (or `https://…`) | Fixed proxy for every upstream call on this provider |
+| `direct` | No proxy for this provider, even if env is set |
+
+## Reasoning effort (optional)
+
+When an upstream encodes intensity in the **model name** (e.g. `example-model-medium`),
+keep the public id lean and declare which tiers actually work:
+
+```yaml
+models:
+  example-model:
+    efforts: [low, medium, high]   # only tiers your upstream accepts
+    default_effort: medium
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        provider_ref: vendor
+        model: example-model-medium   # default-tier pool SKU
+```
+
+- Client sends lean id + optional body field `reasoning_effort` (or `effort`).
+- Empty client effort → `default_effort` when set.
+- Cincai rewrites the pool model’s `-{tier}` suffix to the requested effort
+  (`example-model-medium` + `high` → `example-model-high`).
+- Upstream ids **without** a listed tier suffix are left alone (e.g. a failover
+  partner that uses a different naming scheme).
+- `GET /v1/models` exposes `efforts` and `default_effort` so clients can avoid a
+  static none\|low\|medium\|high list.
+
+Omit `efforts` when the model has no tiered SKUs — body fields then pass through
+unchanged (e.g. OpenAI `reasoning_effort` on a lean model id).
+
 ---
 
 ## See also

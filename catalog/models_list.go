@@ -21,6 +21,17 @@ type ModelListItem struct {
 	Wire string `json:"wire,omitempty"`
 	// Wires lists every catalog wire this model is registered on.
 	Wires []string `json:"wires,omitempty"`
+	// Efforts lists allowed reasoning-effort values when the catalog advertises them.
+	// Clients should use this instead of a static none|low|medium|high list.
+	Efforts []string `json:"efforts,omitempty"`
+	// DefaultEffort is the catalog default when the client omits effort.
+	DefaultEffort string `json:"default_effort,omitempty"`
+	// Facet is the capability token from modality keys after expand: "chat" for
+	// the primary agent row, or "search" / "image" / … for non-chat clones.
+	// Derived from modalities only — never by parsing ":" in the model id
+	// (colons may be part of legitimate provider model ids). Clients (e.g. mow
+	// ACP) should offer only facet=="chat" (or empty on plain OpenAI catalogs).
+	Facet string `json:"facet,omitempty"`
 }
 
 // ModelsListResponse is OpenAI-shaped list envelope.
@@ -61,16 +72,53 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 			continue
 		}
 		sort.Strings(wires)
-		data = append(data, ModelListItem{
+		item := ModelListItem{
 			ID:      id,
 			Object:  "model",
 			Created: c.loadedAt,
 			OwnedBy: "cincai",
 			Wire:    preferredWireForModel(m, wires),
 			Wires:   wires,
-		})
+			Facet:   listFacet(m),
+		}
+		if len(m.Efforts) > 0 {
+			item.Efforts = append([]string(nil), m.Efforts...)
+		}
+		if def := strings.TrimSpace(m.DefaultEffort); def != "" {
+			item.DefaultEffort = def
+		}
+		data = append(data, item)
 	}
 	return ModelsListResponse{Object: "list", Data: data}
+}
+
+// listFacet derives the capability facet for GET /v1/models from modality keys
+// (post ExpandWireCollisions). Do not parse ":" from the model id — some
+// providers use colon inside the id itself, unrelated to cincai facets.
+//
+// Primary agent rows → "chat"; expanded same-wire clones → search/image/….
+func listFacet(m Model) string {
+	keys := make([]string, 0, len(m.Modalities))
+	for k := range m.Modalities {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	switch len(keys) {
+	case 0:
+		return "chat"
+	case 1:
+		if keys[0] == "chat" || keys[0] == "anthropic_chat" {
+			return "chat"
+		}
+		return FacetFromModality(keys[0])
+	default:
+		for _, prefer := range []string{"chat", "anthropic_chat"} {
+			if _, ok := m.Modalities[prefer]; ok {
+				return "chat"
+			}
+		}
+		return FacetFromModality(keys[0])
+	}
 }
 
 func modelWires(m Model) []string {

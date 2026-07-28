@@ -39,10 +39,14 @@ type Surface struct {
 
 // Provider is a logical vendor connection.
 type Provider struct {
-	CredentialProfile string             `yaml:"credential_profile"`
-	Inject            map[string]string  `yaml:"inject,omitempty"`
-	InjectPreset      string             `yaml:"inject_preset,omitempty"`
-	Surfaces          map[string]Surface `yaml:"surfaces"`
+	CredentialProfile string `yaml:"credential_profile"`
+	// Proxy is an optional HTTP(S) proxy URL for all upstream calls on this
+	// provider (e.g. "http://127.0.0.1:8080"). Empty = use process default
+	// (ProxyFromEnvironment). "direct" forces no proxy even if env is set.
+	Proxy        string            `yaml:"proxy,omitempty"`
+	Inject       map[string]string `yaml:"inject,omitempty"`
+	InjectPreset string            `yaml:"inject_preset,omitempty"`
+	Surfaces     map[string]Surface `yaml:"surfaces"`
 }
 
 // PoolEntry is one upstream in a model pool.
@@ -63,7 +67,16 @@ type Modality struct {
 
 // Model is a catalog id.
 type Model struct {
-	Modalities map[string]Modality `yaml:"modalities"`
+	// Efforts lists allowed reasoning-effort levels (e.g. low, medium, high).
+	// Empty means the model does not advertise effort controls. Clients should
+	// use this list when present instead of a static none|low|medium|high set.
+	// When set, request effort rewrites UpstreamModel by replacing a pool-model
+	// tier suffix (example-model-medium + high → example-model-high), or
+	// {id}-{effort} when the pool model equals the public id.
+	Efforts []string `yaml:"efforts,omitempty"`
+	// DefaultEffort is applied when the client omits effort. Must be in Efforts.
+	DefaultEffort string `yaml:"default_effort,omitempty"`
+	Modalities    map[string]Modality `yaml:"modalities"`
 }
 
 // Document is providers.yaml root.
@@ -143,8 +156,10 @@ type Target struct {
 	BaseURL           string
 	CredentialProfile string
 	UpstreamModel     string
-	Inject            map[string]string
-	InjectPreset      string
+	// Proxy is the provider-level HTTP(S) proxy URL (see Provider.Proxy).
+	Proxy        string
+	Inject       map[string]string
+	InjectPreset string
 }
 
 // RoutePlan is the ordered upstream attempt list for one model + wire.
@@ -272,6 +287,7 @@ func (c *Catalog) targetFromEntry(model string, entry PoolEntry, wire string) (T
 		Protocol: surf.Protocol, Adapter: adapter, BaseURL: surf.BaseURL,
 		CredentialProfile: prov.CredentialProfile,
 		UpstreamModel:     upstreamModel,
+		Proxy:             strings.TrimSpace(prov.Proxy),
 		Inject:            prov.Inject,
 		InjectPreset:      prov.InjectPreset,
 	}, nil

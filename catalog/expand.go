@@ -71,7 +71,11 @@ func ExpandWireCollisions(doc *Document) error {
 				if err := assertExpandTargetFree(doc, toAdd, flatID, id, n); err != nil {
 					return err
 				}
+				// Facets inherit effort metadata so :image / :video keep the same
+				// efforts as the base product id.
 				toAdd[flatID] = Model{
+					Efforts:       append([]string(nil), model.Efforts...),
+					DefaultEffort: model.DefaultEffort,
 					Modalities: map[string]Modality{
 						n: model.Modalities[n],
 					},

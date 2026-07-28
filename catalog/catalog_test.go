@@ -175,6 +175,9 @@ func TestListModels(t *testing.T) {
 	if len(list.Data[0].Wires) == 0 {
 		t.Fatalf("expected wires[], item=%+v", list.Data[0])
 	}
+	if list.Data[0].Facet != "chat" {
+		t.Fatalf("expected facet=chat, item=%+v", list.Data[0])
+	}
 }
 
 func TestPreferredChatWire(t *testing.T) {

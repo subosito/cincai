@@ -300,47 +300,58 @@ func (e *Engine) forwardTarget(ctx context.Context, wireID, ingressPath string, 
 
 func (e *Engine) forward(ctx context.Context, wireID, ingressPath string, ht handler.Target, body io.ReadCloser, hdr http.Header) (*http.Response, error) {
 	target := ht.Target
+	httpClient := e.httpClient(target.Proxy)
 	switch wireID {
 	case catalog.WireOpenAIEmbed:
 		h, ok := lookupEmbed(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, body, hdr)
+		return h.Forward(ctx, httpClient, ht, body, hdr)
 	case catalog.WireOpenAIImagesGen:
 		h, ok := lookupImage(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, ingressPath, body, hdr)
+		return h.Forward(ctx, httpClient, ht, ingressPath, body, hdr)
 	case catalog.WireOpenAIAudioSpeech:
 		h, ok := lookupSpeech(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, body, hdr)
+		return h.Forward(ctx, httpClient, ht, body, hdr)
 	case catalog.WireOpenAIAudioTranscriptions:
 		h, ok := lookupTranscription(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, body, hdr)
+		return h.Forward(ctx, httpClient, ht, body, hdr)
 	case catalog.WireOpenAIVideos:
 		h, ok := lookupVideo(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, ingressPath, body, hdr)
+		return h.Forward(ctx, httpClient, ht, ingressPath, body, hdr)
 	default:
 		h, ok := lookupChat(e.Adapters, target)
 		if !ok {
 			return nil, errRouteNotRegistered
 		}
 		if wireID == catalog.WireAnthropicMsg && ingressPath != "" && ingressPath != "/v1/messages" {
-			return passthrough.RelayPath(ctx, e.Client.HTTP, ht, ingressPath, body, hdr)
+			return passthrough.RelayPath(ctx, httpClient, ht, ingressPath, body, hdr)
 		}
-		return h.Forward(ctx, e.Client.HTTP, ht, body, hdr)
+		return h.Forward(ctx, httpClient, ht, body, hdr)
 	}
+}
+
+// httpClient picks the outbound client for a provider proxy setting.
+// Empty proxy uses Engine.Client when set (tests inject custom clients), else ClientFor("").
+func (e *Engine) httpClient(proxy string) *http.Client {
+	p := strings.TrimSpace(proxy)
+	if p == "" && e.Client != nil && e.Client.HTTP != nil {
+		return e.Client.HTTP
+	}
+	return upstream.ClientFor(p).HTTP
 }
 
 func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Principal, wireID string) {
@@ -371,6 +382,13 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Effort → rewrite pool model tier suffix when the catalog advertises efforts.
+	if isChatWire(wireID) && raw != nil {
+		if _, err := e.Catalog.ApplyEffort(model, catalog.EffortFromBody(raw), plan.Targets); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	failover := plan.Strategy == catalog.StrategyFailover
 	ingressPath := r.URL.Path
@@ -426,6 +444,15 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 			_ = upstream.CopyResponse(ctx, w, resp)
 		}
 		return
+	}
+}
+
+func isChatWire(wireID string) bool {
+	switch wireID {
+	case catalog.WireOpenAIChat, catalog.WireOpenAIResponses, catalog.WireAnthropicMsg:
+		return true
+	default:
+		return false
 	}
 }
 
