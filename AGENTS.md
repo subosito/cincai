@@ -1,4 +1,4 @@
-# CLAUDE.md — working in the cincai repo
+# AGENTS.md — working in the cincai repo
 
 Cincai is a model-oriented AI gateway: a client asks for a *model* by name at
 one OpenAI-compatible endpoint, and cincai routes to whichever configured provider can
@@ -7,10 +7,10 @@ OpenAI↔Anthropic wire translation. Chat, image, video, and speech.
 
 ## Build, test, run
 
-Requires **Go 1.26.4+**, pinned by the `go` directive in `go.mod` (and `go.work.example`,
-if you use a local workspace). `devenv shell` provides it from nixpkgs and sets
-`GOTOOLCHAIN=local`, so the toolchain is whatever `devenv.lock` pins — no downloads.
-If the locked nixpkgs ever drops below the `go.mod` floor, builds fail outright
+Requires **Go 1.26.4+**, pinned by the `go` directive in `go.mod`.
+`devenv shell` provides it from nixpkgs and sets `GOTOOLCHAIN=local`, so the
+toolchain is whatever `devenv.lock` pins — no downloads. If the locked nixpkgs
+ever drops below the `go.mod` floor, builds fail outright
 (`go.mod requires go >= …; GOTOOLCHAIN=local`); fix with `devenv update nixpkgs`.
 Outside devenv, use a 1.26.4+ Go, or prefix commands with `GOTOOLCHAIN=go1.26.4`.
 
@@ -24,14 +24,43 @@ go test -race ./... # what CI runs
 There is no separate lint step; `just verify` (vet + tests) is the gate. Format new
 code with `gofmt`.
 
+Optional multi-module workspace: create a local `go.work` (gitignored) with
+`go work init .` — do not commit it.
+
 ## Request flow (data plane)
 
 A `/v1/*` request travels: **ingress auth** (`ingress/keyring` verifies the `sk-dg-`
 gateway key) → **scope check** (`keyring.Authorize`) → **catalog resolve**
-(`catalog` turns the model name + wire into a target pool) → **wire engine**
-(`wire`) dispatches to an **adapter** (`adaptersdk` / `passthrough` / wire-translate)
-→ **upstream relay** (`upstream`) with the provider credential injected
-(`credential/inject`). Study `wire/wire.go` first — it's the spine.
+(`catalog` turns the model name + wire into a target pool; optional
+**effort** rewrite) → **wire engine** (`wire`) dispatches to an **adapter**
+(`adaptersdk` / `passthrough` / wire-translate) → **upstream relay** (`upstream`)
+with the provider credential injected (`credential/inject`), using the provider's
+optional **proxy**. Study `wire/wire.go` first — it's the spine.
+
+## Catalog conventions (operators + examples)
+
+Tracked templates are **generic** (no host-specific proxy ports, no product-only
+SKUs). Prefer recent, widely available model ids that match the bundled adapters:
+
+| Pattern | Example public id | Notes |
+|---------|-------------------|--------|
+| Chat passthrough | `deepseek-v4-flash` | OpenAI chat + optional Anthropic translate |
+| Image gen | `grok-imagine-image-quality` | xAI image adapter |
+| Video gen | `grok-imagine-video` | OpenAI videos passthrough |
+| Speech | `eleven_v3` | ElevenLabs TTS |
+| OCR | `mistral-ocr-latest` | Mistral OCR on chat wire |
+
+**Provider `proxy` (optional):** fixed HTTP(S) proxy for one provider, or `direct`
+to ignore process `HTTP(S)_PROXY`. Document with neutral examples
+(`http://127.0.0.1:8080`), not a deployment's private egress host.
+
+**Model `efforts` / `default_effort` (optional):** when upstream encodes intensity
+in the model name (`example-model-medium`), keep the public id lean and list only
+**working** tiers. Request body `reasoning_effort` (or `effort`) rewrites the pool
+model's `-{tier}` suffix. Foreign upstream names without a tier suffix are left
+alone. `GET /v1/models` exposes `efforts` and `default_effort` for clients.
+
+See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 
 ## Layout and the public/internal split
 
@@ -55,6 +84,8 @@ gateway key) → **scope check** (`keyring.Authorize`) → **catalog resolve**
   refactors.
 - Add a test for non-trivial logic; follow the nearest table-driven example rather than
   inventing a harness.
+- Open-source docs and `*.example` configs stay **vendor-neutral** (example-model,
+  api.example.com). Host-specific catalogs live in product repos (e.g. chacha), not here.
 
 ## Security invariants (don't regress these)
 
@@ -72,7 +103,7 @@ gateway key) → **scope check** (`keyring.Authorize`) → **catalog resolve**
 - `config/cincai.yaml`, `config/providers.yaml`, `config/cincai.dev.env`, and `data/`
   are gitignored — only the `*.example` templates are tracked. Never commit real config
   or a broker.
-- `go.work` is gitignored; copy `go.work.example` for a local multi-module workspace.
+- `go.work` / `go.work.sum` are gitignored when present; create locally if needed.
 - The smoke scripts (`scripts/smoke-*.sh`) stage their config and broker in a `mktemp`
   directory and remove it on exit, so they never touch `config/*.yaml` or a real broker.
   Keep it that way: pass `--config "$CONFIG"`, never a path under `config/`.

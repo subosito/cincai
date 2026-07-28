@@ -68,7 +68,8 @@ no network or real credentials needed.
 | [docs/cli.md](docs/cli.md) | **CLI reference** — `init`, `serve`, `catalog`, `credential`, `keys` |
 | [docs/configuration.md](docs/configuration.md) | **Configuration** — `cincai.yaml`, env vars, adapters |
 | [docs/credential.md](docs/credential.md) | **Credentials** — broker, profiles, API keys vs OAuth |
-| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, failover, name mapping |
+| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, failover, proxy, efforts |
+| [AGENTS.md](AGENTS.md) | Contributor / agent working notes |
 | [docs/media.md](docs/media.md) | **Media routing** — image, speech, video |
 | [docs/catalog-capabilities-modalities.md](docs/catalog-capabilities-modalities.md) | `capabilities` vs `modalities` naming |
 | [docs/catalog-inject.md](docs/catalog-inject.md) | `inject:` map + `inject_preset` |

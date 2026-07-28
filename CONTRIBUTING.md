@@ -15,6 +15,9 @@ devenv shell     # or: direnv allow, if you use direnv
 
 You can also work with a system Go 1.26.4+ toolchain directly — no devenv required.
 
+Agent/contributor layout notes (request path, catalog conventions, security
+invariants): [AGENTS.md](AGENTS.md).
+
 ## Build and test
 
 The [`justfile`](justfile) has the common tasks:

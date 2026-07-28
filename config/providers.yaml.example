@@ -1,28 +1,31 @@
-# Cincai starter catalog — one pattern per adapter (chat + media).
-# Copy to config/providers.yaml. Model pools: docs/routing.md
+# Cincai starter catalog — one live pattern per bundled adapter (chat + media).
+# Copy to config/providers.yaml. Pools / proxy / efforts: docs/routing.md
 #
 # Naming: docs/catalog-capabilities-modalities.md
 # Inject: docs/catalog-inject.md
+#
+# Model ids below are recent public SKUs for the default pack. Swap freely;
+# keep examples generic (no host-only proxy hosts, no product-private prefixes).
 #
 # Optional per provider:
 #   proxy: http://127.0.0.1:8080   # fixed HTTP(S) proxy for this provider only
 #   proxy: direct                 # ignore process HTTP(S)_PROXY for this provider
 # Optional per model (when upstream encodes effort in the model name):
 #   efforts: [low, medium, high]  # list only tiers your upstream accepts
-#   default_effort: medium        # used when the client omits reasoning_effort
-#   pool model: example-model-medium  # default-tier SKU; request effort rewrites the suffix
+#   default_effort: medium
+#   pool model: example-model-medium
 
 providers:
-  # passthrough (API key: deepseek-api)
+  # Chat passthrough (API key: deepseek-api) — DeepSeek V4 Flash
   deepseek:
     credential_profile: deepseek-api
-    # proxy: http://127.0.0.1:8080   # optional egress proxy for this provider
+    # proxy: http://127.0.0.1:8080
     capabilities:
       chat:
         protocol: openai-chat-completions
         base_url: https://api.deepseek.com
 
-  # xai image adapter + openai-videos passthrough (OAuth: xai-oauth)
+  # xAI image + video (OAuth: xai-oauth) — Grok Imagine
   xai:
     credential_profile: xai-oauth
     capabilities:
@@ -33,7 +36,7 @@ providers:
         protocol: openai-videos
         base_url: https://api.x.ai/v1/videos
 
-  # elevenlabs TTS (API key: elevenlabs-api)
+  # ElevenLabs TTS (API key: elevenlabs-api)
   elevenlabs:
     credential_profile: elevenlabs-api
     capabilities:
@@ -41,8 +44,7 @@ providers:
         adapter: elevenlabs
         base_url: https://api.elevenlabs.io
 
-  # mistral OCR (API key: mistral-api). The adapter takes an ordinary chat
-  # request and translates it to Mistral's /v1/ocr, so base_url has no /v1.
+  # Mistral OCR (API key: mistral-api). Chat request → /v1/ocr (base_url has no /v1).
   mistral:
     credential_profile: mistral-api
     capabilities:
@@ -51,19 +53,18 @@ providers:
         base_url: https://api.mistral.ai
 
 models:
+  # --- chat ---------------------------------------------------------------
   deepseek-v4-flash:
     modalities:
       chat:
         wire: openai-chat-completions
         provider_ref: deepseek
-      # Serve /v1/messages from an OpenAI-protocol upstream: the catalog injects
-      # the wire-translate adapter when ingress wire != upstream protocol.
+      # OpenAI upstream served on Anthropic ingress (wire-translate).
       anthropic_chat:
         wire: anthropic-messages
         provider_ref: deepseek
 
-  # --- effort tiers (optional pattern) ---------------------------------
-  # Public id stays lean; upstream still uses a tiered SKU. List only working tiers.
+  # Effort tiers (optional). Public id stays lean; list only working tiers.
   #
   # example-model:
   #   efforts: [low, medium, high]
@@ -74,8 +75,9 @@ models:
   #       provider_ref: deepseek
   #       model: example-model-medium
   # Client: {"model":"example-model","reasoning_effort":"high",…}
-  # → upstream model becomes example-model-high (suffix rewrite).
+  # → upstream model becomes example-model-high.
 
+  # --- image / video ------------------------------------------------------
   grok-imagine-image-quality:
     modalities:
       image_gen:
@@ -88,6 +90,7 @@ models:
         wire: openai-videos
         provider_ref: xai
 
+  # --- speech -------------------------------------------------------------
   eleven_v3:
     modalities:
       speech_gen:
@@ -95,8 +98,8 @@ models:
         provider_ref: elevenlabs
         model: eleven_v3
 
-  # Send a document/image to /v1/chat/completions; the mistral adapter routes it
-  # to /v1/ocr and returns the markdown as a chat completion.
+  # --- document OCR -------------------------------------------------------
+  # Chat wire in; mistral adapter calls /v1/ocr and returns markdown as completion.
   mistral-ocr-latest:
     modalities:
       ocr:

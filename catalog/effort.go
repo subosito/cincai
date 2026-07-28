@@ -33,7 +33,7 @@ func EffortFromBody(raw []byte) string {
 //   - effort must be in Efforts
 //   - upstream rewrite: replace an existing -{effort} suffix on the pool model,
 //     or if pool model == public id, set {id}-{effort}. Other upstream ids
-//     (e.g. vertex google/…) are left alone.
+//     (e.g. vendor/example-model) are left alone.
 //
 // Returns the effort actually used (may be default) and a non-nil error when
 // the client requested an unsupported effort.

@@ -112,6 +112,19 @@ unchanged (e.g. OpenAI `reasoning_effort` on a lean model id).
 
 ---
 
+## Starter models (bundled pack)
+
+`config/providers.yaml.example` ships one recent public SKU per bundled adapter.
+Update these when vendors rename products — keep the *pattern*, not a frozen year.
+
+| Public id | Provider | Wire |
+|-----------|----------|------|
+| `deepseek-v4-flash` | deepseek | chat (+ Anthropic translate) |
+| `grok-imagine-image-quality` | xai | image gen |
+| `grok-imagine-video` | xai | video gen |
+| `eleven_v3` | elevenlabs | speech |
+| `mistral-ocr-latest` | mistral | OCR via chat |
+
 ## See also
 
 - [media.md](media.md) — image, speech, video pools use the same routing model
