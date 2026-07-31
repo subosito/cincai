@@ -99,9 +99,56 @@ func TestExpandEffortBody_ladderInject(t *testing.T) {
 	if body["reasoning_effort"] != "xhigh" {
 		t.Fatalf("%v", body["reasoning_effort"])
 	}
+	if _, ok := body["effort"]; ok {
+		t.Fatalf("must not set top-level effort (Anthropic rejects it): %v", body)
+	}
 	// ladder must not set hybrid-only kwargs
 	if _, ok := body["chat_template_kwargs"]; ok {
 		t.Fatalf("unexpected kwargs: %v", body)
+	}
+}
+
+func TestExpandEffortBody_ladderNoneKeepsNoneNotNoThink(t *testing.T) {
+	t.Parallel()
+	m := catalog.Model{Efforts: []string{"none", "low", "high", "max"}}
+	raw := []byte(`{"model":"deepseek-v4-pro","messages":[]}`)
+	out, err := catalog.ExpandEffortBody(catalog.WireOpenAIChat, raw, "none", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(out, &body)
+	if body["reasoning_effort"] != "none" {
+		t.Fatalf("want reasoning_effort=none, got %v", body["reasoning_effort"])
+	}
+	// ladder must not inject hybrid companions (Qwen 3.8 rejects enable_thinking=false)
+	if _, ok := body["enable_thinking"]; ok {
+		t.Fatalf("ladder must not set enable_thinking: %v", body)
+	}
+	if _, ok := body["chat_template_kwargs"]; ok {
+		t.Fatalf("ladder must not set chat_template_kwargs: %v", body)
+	}
+	if _, ok := body["thinking"]; ok {
+		t.Fatalf("ladder must not set thinking: %v", body)
+	}
+}
+
+func TestExpandEffortBody_anthropicUsesOutputConfig(t *testing.T) {
+	t.Parallel()
+	m := catalog.Model{Efforts: []string{"low", "medium", "high", "xhigh", "max"}}
+	raw := []byte(`{"model":"claude-sonnet-5","messages":[]}`)
+	out, err := catalog.ExpandEffortBody(catalog.WireAnthropicMsg, raw, "max", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(out, &body)
+	if _, ok := body["effort"]; ok {
+		t.Fatalf("top-level effort not allowed: %v", body)
+	}
+	oc, _ := body["output_config"].(map[string]any)
+	if oc["effort"] != "max" {
+		t.Fatalf("output_config=%v", oc)
 	}
 }
 

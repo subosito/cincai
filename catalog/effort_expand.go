@@ -34,13 +34,12 @@ func IsHybridThinkingEfforts(efforts []string) bool {
 //
 // Hybrid efforts [none, on] (Agnes, Qwen-style):
 //   - on  → enable_thinking + chat_template_kwargs.enable_thinking
-//   - none → both false; Anthropic wire drops thinking block
-//   - budget_tokens fixed at HybridThinkingBudgetTokens when on (not meta)
+//   - none → both false
+//   - never write reasoning_effort=on (enum validators reject it)
 //
-// Other ladders (GPT, DeepSeek, …): ensure reasoning_effort is set; on
-// openai-responses also set reasoning.effort. No SKU changes (ApplyEffort).
-//
-// Returns the original body when effort is empty or raw is not a JSON object.
+// Other ladders (GPT, DeepSeek, …): inject reasoning_effort (OpenAI) or
+// output_config.effort (Anthropic). Never rewrite none→no_think on the main
+// reasoning_effort field.
 func ExpandEffortBody(wire string, raw []byte, effort string, m Model) ([]byte, error) {
 	effort = strings.ToLower(strings.TrimSpace(effort))
 	if effort == "" || len(raw) == 0 || len(m.Efforts) == 0 {
@@ -67,20 +66,8 @@ func ExpandEffortBody(wire string, raw []byte, effort string, m Model) ([]byte, 
 }
 
 func expandHybridThinking(wire string, body map[string]any, on bool) {
-	// OpenAI-compatible / vLLM / Agnes chat_template_kwargs
-	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
-	if kwargs == nil {
-		kwargs = map[string]any{}
-	}
-	kwargs["enable_thinking"] = on
-	body["chat_template_kwargs"] = kwargs
-
-	// DashScope-style top-level (ignored if unknown)
-	body["enable_thinking"] = on
-
-	// Do NOT set reasoning_effort to "on"/"none" here: many OpenAI-compat
-	// hosts (e.g. Qwen 3.8) validate reasoning_effort against a fixed enum and
-	// reject the hybrid labels. Hybrid control is enable_thinking only.
+	// Never set reasoning_effort to hybrid labels "on"/"none" — many hosts
+	// validate a fixed enum (Qwen 3.8, etc.) and return 400.
 	delete(body, "reasoning_effort")
 	delete(body, "effort")
 	if r, ok := body["reasoning"].(map[string]any); ok {
@@ -92,43 +79,64 @@ func expandHybridThinking(wire string, body map[string]any, on bool) {
 		}
 	}
 
-	// MiniMax / Anthropic-style thinking block (Agnes Anthropic path; MiniMax M3).
-	if on {
-		th := map[string]any{"type": "enabled"}
-		if wire == WireAnthropicMsg {
-			th["budget_tokens"] = HybridThinkingBudgetTokens
+	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+	if kwargs == nil {
+		kwargs = map[string]any{}
+	}
+	kwargs["enable_thinking"] = on
+	body["chat_template_kwargs"] = kwargs
+	body["enable_thinking"] = on
+
+	switch wire {
+	case WireAnthropicMsg:
+		if on {
+			body["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": HybridThinkingBudgetTokens,
+			}
+		} else {
+			body["thinking"] = map[string]any{"type": "disabled"}
 		}
-		body["thinking"] = th
-	} else {
-		body["thinking"] = map[string]any{"type": "disabled"}
+	case WireOpenAIChat:
+		// MiniMax uses thinking.type; Qwen/Agnes use enable_thinking.
+		if on {
+			body["thinking"] = map[string]any{"type": "enabled"}
+		} else {
+			body["thinking"] = map[string]any{"type": "disabled"}
+		}
+	case WireOpenAIResponses:
+		if on {
+			setNestedReasoningEffort(body, "high")
+		} else {
+			setNestedReasoningEffort(body, "none")
+		}
 	}
 }
 
 func expandEffortLadder(wire string, body map[string]any, effort string) {
-	// Hunyuan Hy3 documents vendor value "no_think" for direct (non-thinking) mode.
-	upstreamEffort := effort
-	if effort == "none" {
-		upstreamEffort = "no_think"
-	}
-	body["reasoning_effort"] = upstreamEffort
-	body["effort"] = effort // keep client-facing label when possible
-	if wire == WireOpenAIResponses {
-		// Responses: keep OpenAI-style none (not no_think).
-		setNestedReasoningEffort(body, effort)
-	}
-	// When effort is none/off, also flip hybrid-thinking vendor knobs so models
-	// that only honor enable_thinking / thinking.type still turn off.
-	if effort == "none" {
-		body["enable_thinking"] = false
-		kwargs, _ := body["chat_template_kwargs"].(map[string]any)
-		if kwargs == nil {
-			kwargs = map[string]any{}
+	// Anthropic rejects top-level "effort". OpenAI uses reasoning_effort.
+	// Never map none→no_think on reasoning_effort (DeepSeek/Qwen/MiMo reject it).
+	delete(body, "effort")
+
+	switch wire {
+	case WireAnthropicMsg:
+		delete(body, "reasoning_effort")
+		oc, _ := body["output_config"].(map[string]any)
+		if oc == nil {
+			oc = map[string]any{}
 		}
-		kwargs["enable_thinking"] = false
-		kwargs["reasoning_effort"] = "no_think"
-		body["chat_template_kwargs"] = kwargs
-		body["thinking"] = map[string]any{"type": "disabled"}
+		oc["effort"] = effort
+		body["output_config"] = oc
+	case WireOpenAIResponses:
+		body["reasoning_effort"] = effort
+		setNestedReasoningEffort(body, effort)
+	default:
+		body["reasoning_effort"] = effort
 	}
+	// Ladder only: reasoning_effort / output_config.effort. Do not inject
+	// enable_thinking or thinking companions — those are hybrid-only. Qwen
+	// 3.8 rejects enable_thinking=false ("restricted to True") even when
+	// reasoning_effort=none is a valid enum value.
 }
 
 func setNestedReasoningEffort(body map[string]any, effort string) {
