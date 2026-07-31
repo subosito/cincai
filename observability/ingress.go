@@ -6,15 +6,21 @@ import (
 )
 
 // RequestLog fields for one ingress request (no secrets).
+// Host labels (actor/session/component) come from optional attribution headers
+// stashed on the request context — same fields the UsageSink persists.
 type RequestLog struct {
-	Wire        string `json:"wire"`
-	Model       string `json:"model"`
-	ProviderRef string `json:"provider_ref"`
-	Protocol    string `json:"protocol"`
-	Status      int    `json:"status"`
-	LatencyMs   int64  `json:"latency_ms"`
-	PrincipalID string `json:"principal_id"`
-	Usage       *Usage `json:"usage,omitempty"`
+	Wire          string `json:"wire"`
+	Model         string `json:"model"`
+	ProviderRef   string `json:"provider_ref,omitempty"`
+	Protocol      string `json:"protocol,omitempty"`
+	Status        int    `json:"status"`
+	LatencyMs     int64  `json:"latency_ms"`
+	PrincipalID   string `json:"principal_id,omitempty"`
+	Actor         string `json:"actor,omitempty"`
+	Session       string `json:"session,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
+	Component     string `json:"component,omitempty"`
+	Usage         *Usage `json:"usage,omitempty"`
 }
 
 // Usage is per-request token / unit counts parsed from the upstream response.
@@ -23,10 +29,11 @@ type RequestLog struct {
 type Usage struct {
 	InputTokens      int    `json:"input_tokens,omitempty"`
 	OutputTokens     int    `json:"output_tokens,omitempty"`
-	CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`  // prompt-cache hits (Anthropic cache_read, OpenAI cached_tokens)
-	CacheWriteTokens int    `json:"cache_write_tokens,omitempty"` // Anthropic cache_creation_input_tokens
-	Units            int    `json:"units,omitempty"`              // media wires: images, seconds, characters
-	Unit             string `json:"unit,omitempty"`               // "image" | "second" | "character"
+	// Cache fields always serialize (including 0) so log consumers can rely on the keys.
+	CacheReadTokens  int    `json:"cache_read_tokens"`  // prompt-cache hits (Anthropic cache_read, OpenAI cached_tokens)
+	CacheWriteTokens int    `json:"cache_write_tokens"` // Anthropic cache_creation_input_tokens
+	Units            int    `json:"units,omitempty"`    // media wires: images, seconds, characters
+	Unit             string `json:"unit,omitempty"`     // "image" | "second" | "character"
 }
 
 // Zero reports whether nothing was measured.

@@ -83,32 +83,47 @@ providers:
 
 ## Reasoning effort (optional)
 
-When an upstream encodes intensity in the **model name** (e.g. `example-model-medium`),
-keep the public id lean and declare which tiers actually work:
+Declare supported efforts in **`models.meta.yaml`** (same place as context/pricing),
+not in `providers.yaml` pools:
 
 ```yaml
+# models.meta.yaml
 models:
-  example-model:
-    efforts: [low, medium, high]   # only tiers your upstream accepts
+  gpt-5.5:
+    efforts: [none, low, medium, high, xhigh]
     default_effort: medium
+  gemini-3.5-flash:
+    efforts: [low]          # only tiers that work on this host
+    default_effort: low
+  deepseek-v4-flash:
+    efforts: [none, low, high, xhigh, max]
+    default_effort: high
+```
+
+```yaml
+# providers.yaml — pool only (SKU tier when needed)
+models:
+  gemini-3.5-flash:
     modalities:
       chat:
         wire: openai-chat-completions
-        provider_ref: vendor
-        model: example-model-medium   # default-tier pool SKU
+        provider_ref: antigravity
+        model: gemini-3.5-flash-low   # default-tier pool SKU
 ```
 
-- Client sends lean id + optional body field `reasoning_effort` (or `effort`).
+- Client sends lean id + body `reasoning_effort`, `effort`, or Responses
+  `reasoning.effort`. **One control only** — no separate `enable_thinking` field
+  from clients (gateway expands hybrid models).
 - Empty client effort → `default_effort` when set.
-- Cincai rewrites the pool model’s `-{tier}` suffix to the requested effort
-  (`example-model-medium` + `high` → `example-model-high`).
-- Upstream ids **without** a listed tier suffix are left alone (e.g. a failover
-  partner that uses a different naming scheme).
-- `GET /v1/models` exposes `efforts` and `default_effort` so clients can avoid a
-  static none\|low\|medium\|high list.
-
-Omit `efforts` when the model has no tiered SKUs — body fields then pass through
-unchanged (e.g. OpenAI `reasoning_effort` on a lean model id).
+- **SKU-tier hosts** (Gemini): rewrites a pool model’s `-{tier}` suffix when that
+  suffix is in `efforts`.
+- **Body ladders** (GPT, DeepSeek, …): lean ids unchanged; gateway injects
+  `reasoning_effort` / `reasoning.effort` for the resolved value.
+- **Hybrid thinking** (`efforts: [none, on]`, e.g. Agnes): `none` → thinking off,
+  `on` → `enable_thinking` + `chat_template_kwargs.enable_thinking` (Anthropic
+  wire also sets `thinking.budget_tokens` to a fixed 2048 — not catalog config).
+- Upstream ids without a listed tier suffix (e.g. `vendor/foo`) are left alone.
+- Omit `efforts` when the model has no controllable effort.
 
 ---
 

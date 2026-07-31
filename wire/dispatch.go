@@ -32,7 +32,7 @@ func lookupSpeech(reg *adaptersdk.Registry, t catalog.Target) (handler.Speech, b
 }
 
 func lookupTranscription(reg *adaptersdk.Registry, t catalog.Target) (handler.Transcription, bool) {
-	return lookupHandler(nil, reg.TranscriptionHandlers, t)
+	return lookupHandler(reg.TranscriptionAdapters, reg.TranscriptionHandlers, t)
 }
 
 func lookupVideo(reg *adaptersdk.Registry, t catalog.Target) (handler.Video, bool) {

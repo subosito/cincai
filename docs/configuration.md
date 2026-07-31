@@ -27,6 +27,7 @@ Paths in `cincai.yaml` are resolved relative to the config file directory unless
 |-----|---------|-------------|
 | `data_listen` | `127.0.0.1:9420` | Data-plane HTTP listen address (loopback by default) |
 | `catalog` | `providers.yaml` | Catalog file path (relative to config dir) |
+| `model_meta` | — | Optional `models.meta.yaml` (context, pricing, efforts for `GET /v1/models`) |
 
 ### `credential`
 
@@ -106,7 +107,7 @@ The catalog defines **providers** (upstream APIs + credentials) and **models** (
 - Provider generate surfaces: `capabilities.image_gen`, `video_gen`, `speech_gen`, `chat`, …
 - Optional per provider: `proxy` (fixed HTTP(S) proxy or `direct`) — see [routing.md](routing.md#provider-proxy-optional)
 - Model routes: `modalities.chat`, `image_gen`, `voice`, …
-- Optional per model: `efforts`, `default_effort` when upstream uses tiered model names — see [routing.md](routing.md#reasoning-effort-optional)
+- Effort lists live in `models.meta.yaml` (`efforts`, `default_effort`) — see [routing.md](routing.md#reasoning-effort-optional)
 
 See:
 
@@ -116,6 +117,49 @@ See:
 - [media.md](media.md) — image, speech, video wires
 
 `credential_profile` on each provider must match a profile stored in `broker.db` via `cincai credential import` or `cincai credential login`. There is no `credential_profiles` block in `cincai.yaml`.
+
+---
+
+## `models.meta.yaml` (optional)
+
+Standalone product metadata for catalog models — **not** routing. Point at it with `serve.model_meta`. Incomplete is fine: only list models with credible numbers.
+
+```yaml
+billing:
+  currency: USD
+  version: "2026-07-31"   # bump when rates / efforts change
+
+models:
+  deepseek-v4-flash:
+    context_window: 1000000
+    efforts: [none, low, high, xhigh, max]
+    default_effort: high
+    pricing:
+      input_per_mtok: 0.14
+      output_per_mtok: 0.28
+      cache_read_per_mtok: 0.0028
+
+  grok-imagine-video:
+    pricing:
+      per_unit: 0.05
+      unit: second
+```
+
+| Field | Meaning |
+|-------|---------|
+| `context_window` | Tokens clients may assume for this public id |
+| `max_output_tokens` | Optional generation cap hint |
+| `efforts` / `default_effort` | Supported reasoning efforts for clients (`GET /v1/models`) |
+| `pricing.input_per_mtok` / `output_per_mtok` | USD per 1M tokens (operator estimate) |
+| `pricing.cache_read_per_mtok` / `cache_write_per_mtok` | Optional cache rates |
+| `pricing.per_unit` + `unit` | Non-token media (`image`, `second`, `character`, `hour`, …) |
+
+Rules:
+
+- Keys must exist in `providers.yaml` (or be a base id of expanded `base:facet` clones). Unknown keys fail `catalog validate` / serve.
+- Expanded facets inherit base meta unless listed explicitly.
+- Missing models simply omit the fields on `GET /v1/models` — no requirement that every model has meta.
+- One price per catalog id (no subscription vs PAYG split).
 
 ---
 

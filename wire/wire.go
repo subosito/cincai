@@ -383,11 +383,21 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// Effort → rewrite pool model tier suffix when the catalog advertises efforts.
+	// Effort → SKU rewrite (Gemini) + body expand (hybrid thinking / ladder inject).
 	if isChatWire(wireID) && raw != nil {
-		if _, err := e.Catalog.ApplyEffort(model, catalog.EffortFromBody(raw), plan.Targets); err != nil {
+		used, err := e.Catalog.ApplyEffort(model, catalog.EffortFromBody(raw), plan.Targets)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if used != "" {
+			if m, ok := e.Catalog.Model(model); ok {
+				raw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
 		}
 	}
 	failover := plan.Strategy == catalog.StrategyFailover

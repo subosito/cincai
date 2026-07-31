@@ -285,15 +285,23 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 	wire := rec.Wire
 	latency := time.Since(start)
 
+	host := HostAttributionFrom(ctx)
+	corr := host.CorrelationID
+	if corr == "" {
+		corr = CorrelationIDFromContext(ctx)
+	}
 	entry := RequestLog{
 		Wire: wire, Model: rec.Model, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
 		Status: status, LatencyMs: latency.Milliseconds(), PrincipalID: rec.PrincipalID,
+		Actor: host.Actor, Session: host.Session, CorrelationID: corr, Component: host.Component,
 	}
 	if !rec.Usage.Zero() {
 		u := rec.Usage
 		entry.Usage = &u
 	}
 	raw, _ := json.Marshal(entry)
+	// Single stderr line per request. Host sinks (SQLite) must not emit a second
+	// "usage" log for the same event — persist only.
 	ingressLog.InfoContext(ctx, "ingress", "record", json.RawMessage(raw))
 
 	Metrics().RecordIngress(ctx, wire, rec.Model, rec.ProviderRef, rec.Protocol, status, latency)
@@ -301,7 +309,9 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 	if usageSink != nil {
 		usageSink.RecordUsage(ctx, UsageEvent{
 			Wire: wire, Model: rec.Model, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
-			PrincipalID: rec.PrincipalID, Status: status, LatencyMs: latency.Milliseconds(), Usage: rec.Usage,
+			PrincipalID: rec.PrincipalID, Actor: host.Actor, Session: host.Session,
+			CorrelationID: corr, Component: host.Component,
+			Status: status, LatencyMs: latency.Milliseconds(), Usage: rec.Usage,
 		})
 	}
 

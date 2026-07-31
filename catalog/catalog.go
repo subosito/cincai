@@ -92,6 +92,10 @@ type Catalog struct {
 	mu  sync.Mutex
 	// loadedAt backs ModelListItem.Created. See listModels for why.
 	loadedAt int64
+	// meta is optional per-model context/pricing from models.meta.yaml (MergeMeta).
+	meta map[string]ModelMeta
+	// metaVersion is billing.version from the last merged meta document.
+	metaVersion string
 }
 
 type roundRobinState struct {
@@ -118,6 +122,15 @@ func NewFromDocument(doc Document) (*Catalog, error) {
 		return nil, err
 	}
 	return &Catalog{doc: doc, rr: make(map[string]*roundRobinState), loadedAt: time.Now().Unix()}, nil
+}
+
+// Model returns the live model entry (after meta merge of efforts when applied).
+func (c *Catalog) Model(id string) (Model, bool) {
+	if c == nil {
+		return Model{}, false
+	}
+	m, ok := c.doc.Models[id]
+	return m, ok
 }
 
 // WireForPath maps HTTP path to wire id.

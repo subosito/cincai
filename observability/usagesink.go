@@ -4,15 +4,20 @@ import "context"
 
 // UsageEvent is one finalized ingress request handed to a registered UsageSink
 // for persistence / aggregation. Measurement only — no pricing.
+// Host labels mirror RequestLog so sinks need not re-parse attribution headers.
 type UsageEvent struct {
-	Wire        string
-	Model       string
-	ProviderRef string
-	Protocol    string
-	PrincipalID string
-	Status      int
-	LatencyMs   int64
-	Usage       Usage
+	Wire          string
+	Model         string
+	ProviderRef   string
+	Protocol      string
+	PrincipalID   string
+	Actor         string
+	Session       string
+	CorrelationID string
+	Component     string
+	Status        int
+	LatencyMs     int64
+	Usage         Usage
 }
 
 // UsageSink receives every finalized ingress request. Embedders that persist usage

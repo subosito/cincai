@@ -32,6 +32,12 @@ type ModelListItem struct {
 	// (colons may be part of legitimate provider model ids). Clients (e.g. mow
 	// ACP) should offer only facet=="chat" (or empty on plain OpenAI catalogs).
 	Facet string `json:"facet,omitempty"`
+	// ContextWindow is total context budget clients may assume (optional meta).
+	ContextWindow int64 `json:"context_window,omitempty"`
+	// MaxOutputTokens is an optional generation cap hint from model meta.
+	MaxOutputTokens int64 `json:"max_output_tokens,omitempty"`
+	// Pricing is optional operator cost estimate from models.meta.yaml.
+	Pricing *ModelPricing `json:"pricing,omitempty"`
 }
 
 // ModelsListResponse is OpenAI-shaped list envelope.
@@ -86,6 +92,18 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 		}
 		if def := strings.TrimSpace(m.DefaultEffort); def != "" {
 			item.DefaultEffort = def
+		}
+		if meta, ok := c.MetaFor(id); ok {
+			if meta.ContextWindow > 0 {
+				item.ContextWindow = meta.ContextWindow
+			}
+			if meta.MaxOutputTokens > 0 {
+				item.MaxOutputTokens = meta.MaxOutputTokens
+			}
+			if meta.Pricing != nil {
+				p := *meta.Pricing
+				item.Pricing = &p
+			}
 		}
 		data = append(data, item)
 	}

@@ -18,6 +18,7 @@ type Registry struct {
 	VideoHandlers         map[string]handler.Video
 	ImageAdapters         map[string]handler.Image
 	SpeechAdapters        map[string]handler.Speech
+	TranscriptionAdapters map[string]handler.Transcription
 	EmbedAdapters         map[string]handler.Embed
 	VideoAdapters         map[string]handler.Video
 	ChatAdapters          map[string]handler.Chat
@@ -33,6 +34,7 @@ func NewRegistry() *Registry {
 		VideoHandlers:         make(map[string]handler.Video),
 		ImageAdapters:         make(map[string]handler.Image),
 		SpeechAdapters:        make(map[string]handler.Speech),
+		TranscriptionAdapters: make(map[string]handler.Transcription),
 		EmbedAdapters:         make(map[string]handler.Embed),
 		VideoAdapters:         make(map[string]handler.Video),
 		ChatAdapters:          make(map[string]handler.Chat),
@@ -77,6 +79,11 @@ func RegisterImageAdapter(reg *Registry, name string, h handler.Image) {
 // RegisterSpeechAdapter adds a translate speech adapter keyed by adapter name.
 func RegisterSpeechAdapter(reg *Registry, name string, h handler.Speech) {
 	reg.SpeechAdapters[name] = h
+}
+
+// RegisterTranscriptionAdapter adds a translate STT adapter keyed by adapter name.
+func RegisterTranscriptionAdapter(reg *Registry, name string, h handler.Transcription) {
+	reg.TranscriptionAdapters[name] = h
 }
 
 // RegisterEmbedAdapter adds a translate embed adapter keyed by adapter name.
@@ -141,6 +148,9 @@ func RegisteredAdapters(reg *Registry) map[string]bool {
 		out[k] = true
 	}
 	for k := range reg.SpeechAdapters {
+		out[k] = true
+	}
+	for k := range reg.TranscriptionAdapters {
 		out[k] = true
 	}
 	for k := range reg.VideoAdapters {

@@ -55,11 +55,16 @@ SKUs). Prefer recent, widely available model ids that match the bundled adapters
 to ignore process `HTTP(S)_PROXY`. Document with neutral examples
 (`http://127.0.0.1:8080`), not a deployment's private egress host.
 
-**Model `efforts` / `default_effort` (optional):** when upstream encodes intensity
-in the model name (`example-model-medium`), keep the public id lean and list only
-**working** tiers. Request body `reasoning_effort` (or `effort`) rewrites the pool
-model's `-{tier}` suffix. Foreign upstream names without a tier suffix are left
-alone. `GET /v1/models` exposes `efforts` and `default_effort` for clients.
+**Model meta (`serve.model_meta` → `models.meta.yaml`, optional):** context window,
+pricing, and **`efforts` / `default_effort`** live outside `providers.yaml`.
+Incomplete is fine — only list models with credible numbers. Facets inherit base
+meta. `GET /v1/models` exposes `context_window`, `max_output_tokens`, `pricing`,
+`efforts`, and `default_effort` when present.
+
+**Efforts:** clients send body `reasoning_effort` / `effort` / Responses
+`reasoning.effort`. Catalog lists only **supported** values so clients do not
+hardcode tiers. SKU-tier hosts (Gemini `…-low`) rewrite the pool model suffix;
+body-only hosts (GPT, DeepSeek) keep a lean upstream id and rely on the body.
 
 See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 

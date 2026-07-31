@@ -17,8 +17,69 @@ func TestEffortFromBody(t *testing.T) {
 	if got := catalog.EffortFromBody([]byte(`{"reasoning_effort":"medium","effort":"low"}`)); got != "medium" {
 		t.Fatalf("got %q", got)
 	}
+	if got := catalog.EffortFromBody([]byte(`{"model":"m","reasoning":{"effort":"xhigh"}}`)); got != "xhigh" {
+		t.Fatalf("nested reasoning.effort got %q", got)
+	}
 	if got := catalog.EffortFromBody([]byte(`{"model":"m"}`)); got != "" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestApplyEffort_bodyOnlyNoSKURewrite(t *testing.T) {
+	t.Parallel()
+	// OpenAI-style lean id: efforts are advertised but upstream model must not become gpt-5.5-high.
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"codex": {
+				CredentialProfile: "codex",
+				Surfaces: map[string]catalog.Surface{
+					"chat": {Protocol: "openai-chat-completions", BaseURL: "https://example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"gpt-5.5": {
+				Modalities: map[string]catalog.Modality{
+					"chat": {
+						Wire:      catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{{ProviderRef: "codex", Surface: "chat", Model: "gpt-5.5"}},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.MergeMeta(catalog.MetaDocument{
+		Models: map[string]catalog.ModelMeta{
+			"gpt-5.5": {
+				Efforts:       []string{"none", "low", "medium", "high", "xhigh"},
+				DefaultEffort: "medium",
+				ContextWindow: 200000,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := cat.Resolve("gpt-5.5", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	used, err := cat.ApplyEffort("gpt-5.5", "xhigh", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "xhigh" {
+		t.Fatalf("used=%q", used)
+	}
+	if plan.Targets[0].UpstreamModel != "gpt-5.5" {
+		t.Fatalf("body-only model must not rewrite SKU, got %q", plan.Targets[0].UpstreamModel)
+	}
+	list := cat.ListModels()
+	if len(list.Data) != 1 || len(list.Data[0].Efforts) != 5 || list.Data[0].DefaultEffort != "medium" {
+		t.Fatalf("list item=%+v", list.Data[0])
 	}
 }
 

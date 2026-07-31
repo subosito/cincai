@@ -59,6 +59,13 @@ func parseOpenAIChunk(data []byte, activeTools map[int]bool, started *bool) ([]m
 		Usage *struct {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
+			PromptTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+			// Responses-style (rarely on chat chunks; accept if present).
+			InputTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -112,12 +119,22 @@ func parseOpenAIChunk(data []byte, activeTools map[int]bool, started *bool) ([]m
 			out = append(out, messages.StreamEvent{Kind: messages.KindMessageStop})
 		}
 	}
-	if chunk.Usage != nil && (chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0) {
-		out = append(out, messages.StreamEvent{
-			Kind:         messages.KindUsage,
-			InputTokens:  chunk.Usage.PromptTokens,
-			OutputTokens: chunk.Usage.CompletionTokens,
-		})
+	if chunk.Usage != nil {
+		cacheRead := 0
+		if chunk.Usage.PromptTokensDetails != nil {
+			cacheRead = chunk.Usage.PromptTokensDetails.CachedTokens
+		}
+		if cacheRead == 0 && chunk.Usage.InputTokensDetails != nil {
+			cacheRead = chunk.Usage.InputTokensDetails.CachedTokens
+		}
+		if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || cacheRead > 0 {
+			out = append(out, messages.StreamEvent{
+				Kind:            messages.KindUsage,
+				InputTokens:     chunk.Usage.PromptTokens,
+				OutputTokens:    chunk.Usage.CompletionTokens,
+				CacheReadTokens: cacheRead,
+			})
+		}
 	}
 	return out, nil
 }
@@ -143,6 +160,12 @@ func openAINonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
+			PromptTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+			InputTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
@@ -173,11 +196,19 @@ func openAINonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 		events = append(events, messages.StreamEvent{Kind: messages.KindTelemetry, Message: resp.Choices[0].FinishReason})
 	}
 	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
-	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+	cacheRead := 0
+	if resp.Usage.PromptTokensDetails != nil {
+		cacheRead = resp.Usage.PromptTokensDetails.CachedTokens
+	}
+	if cacheRead == 0 && resp.Usage.InputTokensDetails != nil {
+		cacheRead = resp.Usage.InputTokensDetails.CachedTokens
+	}
+	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 || cacheRead > 0 {
 		events = append(events, messages.StreamEvent{
-			Kind:         messages.KindUsage,
-			InputTokens:  resp.Usage.PromptTokens,
-			OutputTokens: resp.Usage.CompletionTokens,
+			Kind:            messages.KindUsage,
+			InputTokens:     resp.Usage.PromptTokens,
+			OutputTokens:    resp.Usage.CompletionTokens,
+			CacheReadTokens: cacheRead,
 		})
 	}
 	return events, nil

@@ -12,6 +12,8 @@ serve:
   # gateway API keys travel in cleartext on this listener.
   data_listen: "127.0.0.1:9420"
   catalog: providers.yaml
+  # Optional: context window + pricing for GET /v1/models (incomplete is fine)
+  # model_meta: models.meta.yaml
 
 credential:
   broker: ../data/.auth/broker.db

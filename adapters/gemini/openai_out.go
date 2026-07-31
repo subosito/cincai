@@ -188,11 +188,13 @@ func responseToEventsAccum(resp GenerateResponse, model string, started *bool, t
 			}
 		}
 	}
-	if resp.UsageMetadata.PromptTokenCount > 0 || resp.UsageMetadata.CandidatesTokenCount > 0 {
+	um := resp.UsageMetadata
+	if um.PromptTokenCount > 0 || um.CandidatesTokenCount > 0 || um.CachedContentTokenCount > 0 {
 		out = append(out, messages.StreamEvent{
-			Kind:         messages.KindUsage,
-			InputTokens:  resp.UsageMetadata.PromptTokenCount,
-			OutputTokens: resp.UsageMetadata.CandidatesTokenCount,
+			Kind:            messages.KindUsage,
+			InputTokens:     um.PromptTokenCount,
+			OutputTokens:    um.CandidatesTokenCount,
+			CacheReadTokens: um.CachedContentTokenCount,
 		})
 	}
 	if finish != "" {
@@ -207,7 +209,7 @@ func EncodeOpenAICompletion(events []messages.StreamEvent, model string) (map[st
 	chunkID := "chatcmpl-gemini"
 	msgModel := strings.TrimSpace(model)
 	finish := "stop"
-	var promptTok, completionTok int
+	var promptTok, completionTok, cacheReadTok int
 	type pendingTool struct {
 		id, name, args, thoughtSig string
 	}
@@ -241,6 +243,7 @@ func EncodeOpenAICompletion(events []messages.StreamEvent, model string) (map[st
 		case messages.KindUsage:
 			promptTok = ev.InputTokens
 			completionTok = ev.OutputTokens
+			cacheReadTok = ev.CacheReadTokens
 		case messages.KindTelemetry:
 			if strings.TrimSpace(ev.Message) != "" {
 				finish = mapFinishReason(ev.Message)
@@ -301,12 +304,22 @@ func EncodeOpenAICompletion(events []messages.StreamEvent, model string) (map[st
 			"message":       msg,
 			"finish_reason": finish,
 		}},
-		"usage": map[string]any{
-			"prompt_tokens":     promptTok,
-			"completion_tokens": completionTok,
-			"total_tokens":      promptTok + completionTok,
-		},
+		"usage": openAIUsageObject(promptTok, completionTok, cacheReadTok),
 	}, nil
+}
+
+// openAIUsageObject builds chat.completions usage so the wire meter can recover
+// Gemini cache hits via prompt_tokens_details.cached_tokens.
+func openAIUsageObject(promptTok, completionTok, cacheReadTok int) map[string]any {
+	out := map[string]any{
+		"prompt_tokens":     promptTok,
+		"completion_tokens": completionTok,
+		"total_tokens":      promptTok + completionTok,
+	}
+	if cacheReadTok > 0 {
+		out["prompt_tokens_details"] = map[string]any{"cached_tokens": cacheReadTok}
+	}
+	return out
 }
 
 // EncodeOpenAISSE builds OpenAI chat.completion.chunk SSE from events.
@@ -350,7 +363,7 @@ func EncodeOpenAISSE(events []messages.StreamEvent, model string) ([]byte, error
 		}}, nil)
 	}
 
-	var promptTok, completionTok int
+	var promptTok, completionTok, cacheReadTok int
 	for _, ev := range events {
 		switch ev.Kind {
 		case messages.KindMessageStart:
@@ -416,6 +429,7 @@ func EncodeOpenAISSE(events []messages.StreamEvent, model string) ([]byte, error
 		case messages.KindUsage:
 			promptTok = ev.InputTokens
 			completionTok = ev.OutputTokens
+			cacheReadTok = ev.CacheReadTokens
 		case messages.KindTelemetry:
 			if strings.TrimSpace(ev.Message) != "" {
 				finish = mapFinishReason(ev.Message)
@@ -437,12 +451,8 @@ func EncodeOpenAISSE(events []messages.StreamEvent, model string) ([]byte, error
 		}
 	}
 	var usage map[string]any
-	if promptTok > 0 || completionTok > 0 {
-		usage = map[string]any{
-			"prompt_tokens":     promptTok,
-			"completion_tokens": completionTok,
-			"total_tokens":      promptTok + completionTok,
-		}
+	if promptTok > 0 || completionTok > 0 || cacheReadTok > 0 {
+		usage = openAIUsageObject(promptTok, completionTok, cacheReadTok)
 	}
 	if err := writeChunk([]map[string]any{{
 		"index":         0,

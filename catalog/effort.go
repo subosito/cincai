@@ -7,7 +7,8 @@ import (
 )
 
 // EffortFromBody extracts a client effort hint from a chat-style JSON body.
-// Prefers reasoning_effort, then effort. Empty when neither is set.
+// Prefers top-level reasoning_effort, then nested Responses reasoning.effort,
+// then top-level effort. Empty when none are set.
 func EffortFromBody(raw []byte) string {
 	if len(raw) == 0 {
 		return ""
@@ -15,6 +16,9 @@ func EffortFromBody(raw []byte) string {
 	var body struct {
 		ReasoningEffort string `json:"reasoning_effort"`
 		Effort          string `json:"effort"`
+		Reasoning       *struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return ""
@@ -22,18 +26,23 @@ func EffortFromBody(raw []byte) string {
 	if s := strings.TrimSpace(body.ReasoningEffort); s != "" {
 		return s
 	}
+	if body.Reasoning != nil {
+		if s := strings.TrimSpace(body.Reasoning.Effort); s != "" {
+			return s
+		}
+	}
 	return strings.TrimSpace(body.Effort)
 }
 
 // ApplyEffort rewrites targets' UpstreamModel for models that advertise Efforts.
+// Pair with ExpandEffortBody to inject vendor body knobs (hybrid thinking, etc.).
 //
 // Rules:
-//   - no Efforts → no-op (body fields pass through unchanged)
+//   - no Efforts → no-op
 //   - effort empty → DefaultEffort (if set); still no-op if both empty
 //   - effort must be in Efforts
-//   - upstream rewrite: replace an existing -{effort} suffix on the pool model,
-//     or if pool model == public id, set {id}-{effort}. Other upstream ids
-//     (e.g. vendor/example-model) are left alone.
+//   - SKU rewrite only when pool upstream already ends with a listed -{tier}
+//   - lean / foreign upstream ids are left alone (body carries effort)
 //
 // Returns the effort actually used (may be default) and a non-nil error when
 // the client requested an unsupported effort.
@@ -69,8 +78,11 @@ func applyEffort(publicID string, m Model, effort string, targets []Target) (str
 }
 
 // rewriteEffortUpstream maps a pool upstream id to the tier for effort.
-// Example: example-model-medium + high → example-model-high.
-// Upstream ids without a listed tier suffix are unchanged.
+// Example: example-model-medium + high → example-model-high (SKU-tier models).
+//
+// Body-only models (OpenAI GPT, DeepSeek, …) use lean ids with no tier suffix:
+// leave UpstreamModel unchanged so the client body field (reasoning_effort /
+// reasoning.effort) is what the vendor consumes. Never invent publicID-effort.
 func rewriteEffortUpstream(publicID, upstream, effort string, efforts []string) string {
 	up := strings.TrimSpace(upstream)
 	if up == "" {
@@ -86,9 +98,6 @@ func rewriteEffortUpstream(publicID, upstream, effort string, efforts []string) 
 		if strings.HasSuffix(lower, suf) {
 			return up[:len(up)-len(suf)] + "-" + effort
 		}
-	}
-	if strings.EqualFold(up, publicID) {
-		return strings.TrimSpace(publicID) + "-" + effort
 	}
 	return up
 }

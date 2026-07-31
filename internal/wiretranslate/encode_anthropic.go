@@ -19,13 +19,15 @@ func encodeAnthropicJSON(events []messages.StreamEvent, model string) ([]byte, e
 
 func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[string]any, error) {
 	var (
-		msgID    string
-		msgModel string
-		blocks   []map[string]any
-		textBuf  strings.Builder
-		inputTok int
-		outTok   int
-		stop     = "end_turn"
+		msgID      string
+		msgModel   string
+		blocks     []map[string]any
+		textBuf    strings.Builder
+		inputTok   int
+		outTok     int
+		cacheRead  int
+		cacheWrite int
+		stop       = "end_turn"
 	)
 	flushText := func() {
 		if textBuf.Len() == 0 {
@@ -66,8 +68,18 @@ func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[str
 				stop = mapStopReason(s)
 			}
 		case messages.KindUsage:
-			inputTok = ev.InputTokens
-			outTok = ev.OutputTokens
+			if ev.InputTokens > 0 {
+				inputTok = ev.InputTokens
+			}
+			if ev.OutputTokens > 0 {
+				outTok = ev.OutputTokens
+			}
+			if ev.CacheReadTokens > 0 {
+				cacheRead = ev.CacheReadTokens
+			}
+			if ev.CacheWriteTokens > 0 {
+				cacheWrite = ev.CacheWriteTokens
+			}
 		}
 	}
 	flushText()
@@ -79,6 +91,16 @@ func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[str
 		// content; return a valid empty message instead of failing the request.
 		blocks = []map[string]any{}
 	}
+	usage := map[string]any{
+		"input_tokens":  inputTok,
+		"output_tokens": outTok,
+	}
+	if cacheRead > 0 {
+		usage["cache_read_input_tokens"] = cacheRead
+	}
+	if cacheWrite > 0 {
+		usage["cache_creation_input_tokens"] = cacheWrite
+	}
 	return map[string]any{
 		"id":            fallbackMsgID(msgID),
 		"type":          "message",
@@ -87,10 +109,7 @@ func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[str
 		"content":       blocks,
 		"stop_reason":   stop,
 		"stop_sequence": nil,
-		"usage": map[string]any{
-			"input_tokens":  inputTok,
-			"output_tokens": outTok,
-		},
+		"usage":         usage,
 	}, nil
 }
 

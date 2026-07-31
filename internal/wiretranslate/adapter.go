@@ -162,8 +162,10 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 		} `json:"content"`
 		StopReason string `json:"stop_reason"`
 		Usage      struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
+			InputTokens              int `json:"input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &msg); err != nil {
@@ -191,11 +193,14 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 	}
 	events = append(events, messages.StreamEvent{Kind: messages.KindTelemetry, Message: msg.StopReason})
 	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
-	if msg.Usage.InputTokens > 0 || msg.Usage.OutputTokens > 0 {
+	u := msg.Usage
+	if u.InputTokens > 0 || u.OutputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
 		events = append(events, messages.StreamEvent{
-			Kind:         messages.KindUsage,
-			InputTokens:  msg.Usage.InputTokens,
-			OutputTokens: msg.Usage.OutputTokens,
+			Kind:             messages.KindUsage,
+			InputTokens:      u.InputTokens,
+			OutputTokens:     u.OutputTokens,
+			CacheReadTokens:  u.CacheReadInputTokens,
+			CacheWriteTokens: u.CacheCreationInputTokens,
 		})
 	}
 	return events, nil

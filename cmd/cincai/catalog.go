@@ -37,7 +37,7 @@ func printCatalogUsage() {
 	fmt.Fprintf(os.Stderr, `cincai catalog — providers.yaml tools
 
 Usage:
-  cincai catalog validate [--config PATH] [--catalog PATH]
+  cincai catalog validate [--config PATH] [--catalog PATH] [--model-meta PATH]
 
 `)
 }
@@ -46,9 +46,10 @@ func catalogValidateCmd(args []string) int {
 	fs := newFlagSet("catalog validate")
 	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
 	catalogPath := fs.String("catalog", "", "path to providers.yaml (overrides serve.catalog from config)")
+	modelMetaPath := fs.String("model-meta", "", "path to models.meta.yaml (overrides serve.model_meta from config)")
 	if wantsHelp(args) {
 		printCommandHelp("cincai catalog validate — check providers.yaml loads and routes resolve",
-			"  cincai catalog validate [--config PATH] [--catalog PATH]", fs)
+			"  cincai catalog validate [--config PATH] [--catalog PATH] [--model-meta PATH]", fs)
 		return 0
 	}
 	if err := parseFlags(fs, args); err != nil {
@@ -66,6 +67,17 @@ func catalogValidateCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "cincai catalog validate: load %s: %v\n", path, err)
 		return 1
 	}
+	metaPath, err := resolveModelMetaPath(*configPath, *modelMetaPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cincai catalog validate: %v\n", err)
+		return 1
+	}
+	if metaPath != "" {
+		if err := cat.MergeMetaFile(metaPath); err != nil {
+			fmt.Fprintf(os.Stderr, "cincai catalog validate: model meta: %v\n", err)
+			return 1
+		}
+	}
 	if err := cat.ValidateRoutes(); err != nil {
 		fmt.Fprintf(os.Stderr, "cincai catalog validate: %v\n", err)
 		return 1
@@ -74,7 +86,11 @@ func catalogValidateCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "cincai catalog validate: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(os.Stdout, "catalog ok: %s (%d models)\n", path, cat.ModelCount())
+	if metaPath != "" {
+		fmt.Fprintf(os.Stdout, "catalog ok: %s (%d models) meta=%s\n", path, cat.ModelCount(), metaPath)
+	} else {
+		fmt.Fprintf(os.Stdout, "catalog ok: %s (%d models)\n", path, cat.ModelCount())
+	}
 	return 0
 }
 
@@ -125,4 +141,27 @@ func resolveCatalogPath(configPath, catalogOverride string) (string, error) {
 		catalogPath = filepath.Join(filepath.Dir(cfgPath), catalogPath)
 	}
 	return catalogPath, nil
+}
+
+func resolveModelMetaPath(configPath, metaOverride string) (string, error) {
+	if strings.TrimSpace(metaOverride) != "" {
+		return strings.TrimSpace(metaOverride), nil
+	}
+	cfgPath := strings.TrimSpace(configPath)
+	if cfgPath == "" {
+		cfgPath = "config/cincai.yaml"
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		// Standalone --catalog validates without config; meta is optional.
+		return "", nil
+	}
+	metaPath := strings.TrimSpace(cfg.Serve.ModelMeta)
+	if metaPath == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(metaPath) {
+		metaPath = filepath.Join(filepath.Dir(cfgPath), metaPath)
+	}
+	return metaPath, nil
 }

@@ -306,6 +306,8 @@ type anthropicStreamEncoder struct {
 	stopReason  string
 	inputTok    int
 	outputTok   int
+	cacheRead   int
+	cacheWrite  int
 	wrote       bool
 }
 
@@ -437,6 +439,12 @@ func (e *anthropicStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		if ev.InputTokens > 0 {
 			e.inputTok = ev.InputTokens
 		}
+		if ev.CacheReadTokens > 0 {
+			e.cacheRead = ev.CacheReadTokens
+		}
+		if ev.CacheWriteTokens > 0 {
+			e.cacheWrite = ev.CacheWriteTokens
+		}
 	case messages.KindMessageStop:
 		if err := e.ensureMessageStart(); err != nil {
 			return err
@@ -452,6 +460,12 @@ func (e *anthropicStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		usage := map[string]any{"output_tokens": e.outputTok}
 		if e.inputTok > 0 {
 			usage["input_tokens"] = e.inputTok
+		}
+		if e.cacheRead > 0 {
+			usage["cache_read_input_tokens"] = e.cacheRead
+		}
+		if e.cacheWrite > 0 {
+			usage["cache_creation_input_tokens"] = e.cacheWrite
 		}
 		if err := e.write("message_delta", map[string]any{
 			"type":  "message_delta",

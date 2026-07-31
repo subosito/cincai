@@ -41,6 +41,17 @@ func encodeOpenAIJSON(events []messages.StreamEvent, model string) ([]byte, erro
 		finish = "tool_calls"
 	}
 	usage, _ := msg["usage"].(map[string]any)
+	in := anyToInt(usage["input_tokens"])
+	out := anyToInt(usage["output_tokens"])
+	cacheRead := anyToInt(usage["cache_read_input_tokens"])
+	oaUsage := map[string]any{
+		"prompt_tokens":     in,
+		"completion_tokens": out,
+		"total_tokens":      in + out,
+	}
+	if cacheRead > 0 {
+		oaUsage["prompt_tokens_details"] = map[string]any{"cached_tokens": cacheRead}
+	}
 	resp := map[string]any{
 		"id":      msg["id"],
 		"object":  "chat.completion",
@@ -55,19 +66,22 @@ func encodeOpenAIJSON(events []messages.StreamEvent, model string) ([]byte, erro
 			},
 			"finish_reason": finish,
 		}},
-		"usage": map[string]any{
-			"prompt_tokens":     usage["input_tokens"],
-			"completion_tokens": usage["output_tokens"],
-			"total_tokens":      sumTokens(usage),
-		},
+		"usage": oaUsage,
 	}
 	return json.Marshal(resp)
 }
 
-func sumTokens(usage map[string]any) int {
-	in, _ := usage["input_tokens"].(int)
-	out, _ := usage["output_tokens"].(int)
-	return in + out
+func anyToInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func mapOpenAIFinish(stop string) string {

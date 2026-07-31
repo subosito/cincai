@@ -33,6 +33,9 @@ type File struct {
 	Serve struct {
 		DataListen string `yaml:"data_listen"`
 		Catalog    string `yaml:"catalog"`
+		// ModelMeta is an optional path to models.meta.yaml (context window + pricing).
+		// Relative paths resolve next to the config file. Empty = no meta.
+		ModelMeta string `yaml:"model_meta,omitempty"`
 	} `yaml:"serve"`
 	Credential struct {
 		Backend    string `yaml:"backend,omitempty"`

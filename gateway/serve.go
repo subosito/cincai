@@ -84,6 +84,11 @@ func openGateway(opts ServeOptions) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("catalog: %w", err)
 	}
+	if metaPath := strings.TrimSpace(cfgFile.Serve.ModelMeta); metaPath != "" {
+		if err := cat.MergeMetaFile(metaPath); err != nil {
+			return nil, fmt.Errorf("model meta: %w", err)
+		}
+	}
 	st, ks, err := OpenStore(cfgFile)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
@@ -132,6 +137,9 @@ func resolvePaths(cfg *config.File, configPath string) {
 	base := filepath.Dir(configPath)
 	if !filepath.IsAbs(cfg.Serve.Catalog) {
 		cfg.Serve.Catalog = filepath.Join(base, cfg.Serve.Catalog)
+	}
+	if p := strings.TrimSpace(cfg.Serve.ModelMeta); p != "" && !filepath.IsAbs(p) {
+		cfg.Serve.ModelMeta = filepath.Join(base, p)
 	}
 	if !filepath.IsAbs(cfg.Credential.Broker) {
 		cfg.Credential.Broker = filepath.Join(base, cfg.Credential.Broker)
