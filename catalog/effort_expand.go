@@ -78,9 +78,19 @@ func expandHybridThinking(wire string, body map[string]any, on bool) {
 	// DashScope-style top-level (ignored if unknown)
 	body["enable_thinking"] = on
 
-	// Keep a single client-visible effort field for logs / strict proxies.
-	body["reasoning_effort"] = mapHybridEffortLabel(on)
-	body["effort"] = mapHybridEffortLabel(on)
+	// Do NOT set reasoning_effort to "on"/"none" here: many OpenAI-compat
+	// hosts (e.g. Qwen 3.8) validate reasoning_effort against a fixed enum and
+	// reject the hybrid labels. Hybrid control is enable_thinking only.
+	delete(body, "reasoning_effort")
+	delete(body, "effort")
+	if r, ok := body["reasoning"].(map[string]any); ok {
+		delete(r, "effort")
+		if len(r) == 0 {
+			delete(body, "reasoning")
+		} else {
+			body["reasoning"] = r
+		}
+	}
 
 	// MiniMax / Anthropic-style thinking block (Agnes Anthropic path; MiniMax M3).
 	if on {
@@ -92,22 +102,6 @@ func expandHybridThinking(wire string, body map[string]any, on bool) {
 	} else {
 		body["thinking"] = map[string]any{"type": "disabled"}
 	}
-
-	if wire == WireOpenAIResponses {
-		// Responses-shaped thinking off often uses reasoning.effort=none.
-		if on {
-			setNestedReasoningEffort(body, "on")
-		} else {
-			setNestedReasoningEffort(body, "none")
-		}
-	}
-}
-
-func mapHybridEffortLabel(on bool) string {
-	if on {
-		return "on"
-	}
-	return "none"
 }
 
 func expandEffortLadder(wire string, body map[string]any, effort string) {

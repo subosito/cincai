@@ -42,8 +42,9 @@ func TestExpandEffortBody_hybridOn(t *testing.T) {
 	if kwargs["enable_thinking"] != true {
 		t.Fatalf("kwargs=%v", kwargs)
 	}
-	if body["reasoning_effort"] != "on" {
-		t.Fatalf("reasoning_effort=%v", body["reasoning_effort"])
+	// Must not inject hybrid labels into reasoning_effort (vendors reject "on").
+	if _, ok := body["reasoning_effort"]; ok {
+		t.Fatalf("hybrid path must not set reasoning_effort, got %v", body["reasoning_effort"])
 	}
 }
 
