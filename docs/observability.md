@@ -13,9 +13,10 @@ Each request writes one JSON line to stderr:
 ```json
 {
   "wire": "openai-chat-completions",
-  "model": "example-model",
-  "provider_ref": "vendor",
-  "protocol": "openai-chat-completions",
+  "model": "gpt-5.6-luna",
+  "alias": "goalie",
+  "provider_ref": "codex",
+  "protocol": "adapter:codexapi",
   "status": 200,
   "latency_ms": 842,
   "principal_id": "key:1",
@@ -33,7 +34,8 @@ Fields:
 | Field | Description |
 |-------|-------------|
 | `wire` | Ingress wire id (e.g. `openai-images-generations`) |
-| `model` | Catalog model id from the request |
+| `model` | Catalog model that **served** the request (hop id for composites) |
+| `alias` | Composite catalog id from the request when `modality.models` was used (e.g. `goalie`); omitted for leaf models |
 | `provider_ref` | Selected provider from the catalog |
 | `protocol` | Upstream protocol / adapter surface |
 | `status` | HTTP status returned to the client |

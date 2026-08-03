@@ -26,6 +26,12 @@ Cincai moves that knowledge into one place: a catalog that maps a canonical mode
 to a **pool** of providers with a failover or round-robin strategy. Swap a provider,
 add a fallback, or rotate a credential by editing config — your clients never notice.
 
+A model id can also be a **composite**: ordered hops to *other* catalog models
+(`modality.models`) so a cheap default can fall through luna → gemini → deepseek
+on retryable failures. Same `models:` root, listed on `GET /v1/models` with a
+`models` array; ingress logs use **`model`** for the hop that served and **`alias`**
+for the composite id. See [docs/routing.md](docs/routing.md).
+
 ## Quick start
 
 You need Go 1.26.4+ (`devenv shell` provides it, but any recent system Go works).
@@ -68,7 +74,7 @@ no network or real credentials needed.
 | [docs/cli.md](docs/cli.md) | **CLI reference** — `init`, `serve`, `catalog`, `credential`, `keys` |
 | [docs/configuration.md](docs/configuration.md) | **Configuration** — `cincai.yaml`, env vars, adapters |
 | [docs/credential.md](docs/credential.md) | **Credentials** — broker, profiles, API keys vs OAuth |
-| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, failover, proxy, efforts |
+| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, composite `models:` hops, failover, proxy, efforts |
 | [AGENTS.md](AGENTS.md) | Contributor / agent working notes |
 | [docs/media.md](docs/media.md) | **Media routing** — image, speech, video |
 | [docs/catalog-capabilities-modalities.md](docs/catalog-capabilities-modalities.md) | `capabilities` vs `modalities` naming |

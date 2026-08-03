@@ -8,6 +8,7 @@ import "context"
 type UsageEvent struct {
 	Wire          string
 	Model         string
+	Alias         string // composite id when request used modality.models chain
 	ProviderRef   string
 	Protocol      string
 	PrincipalID   string

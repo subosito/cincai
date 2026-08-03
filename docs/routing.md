@@ -14,7 +14,8 @@ cincai:   model example-model  →  pool [vendor, openrouter, fireworks]  →  s
 
 ## The three pieces
 
-A model's modality is a **pool** of providers plus a **strategy**:
+A model's modality is a **pool** plus a **strategy**. The pool is either
+**providers** (leaf model) or **models** (composite — ordered public model ids).
 
 ```yaml
 models:
@@ -42,6 +43,60 @@ models:
 
 Wire translation still applies underneath: hit `/v1/chat/completions` or
 `/v1/messages`, and Cincai translates when a provider's protocol differs.
+
+## Composite models (`models:` hops)
+
+Some public ids are **composites**: they do not pin a provider; they name an
+ordered list of **other catalog model ids**. Same root key (`models:`), same
+ingress (`model: agent-cheap`), same `/v1/models` listing — no separate
+`aliases` / `chains` config.
+
+```yaml
+models:
+  gpt-5.6-luna:
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        provider_ref: codex
+        model: gpt-5.6-luna
+
+  gemini-3.6-flash:
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        provider_ref: antigravity
+        model: gemini-3.6-flash-medium
+
+  # Composite: try luna, then gemini (each hop uses that hop's own provider pool).
+  agent-cheap:
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        strategy: failover
+        models:                         # ordered public model ids (not providers)
+          - gpt-5.6-luna
+          - gemini-3.6-flash
+```
+
+Rules:
+
+| Rule | Detail |
+|------|--------|
+| **XOR** | A modality sets **`providers`** (or single `provider_ref`) **or** **`models`**, never both. |
+| **Hops** | Each entry is an existing public model id that supports the same wire. |
+| **Cycles** | `a → b → a` is rejected at resolve/validate. |
+| **Strategy** | `failover` (default): try hop1's full provider pool, then hop2, …. `round_robin`: pick one hop per request. |
+| **Retryable only** | Cross-hop failover uses the same statuses as provider failover (429/502/503/504/402, dial errors) — not 400s such as context length. |
+| **Effort** | Applied **per hop** from that hop's catalog efforts (not invented on the composite id). |
+| **GET /v1/models** | Composite ids appear as normal models with `"models": ["gpt-5.6-luna", "gemini-3.6-flash"]`. Leaf models omit the field. |
+
+Observability: ingress **`model`** is the **hop that served** (real catalog id);
+**`alias`** is the composite id from the request (e.g. `goalie`). Leaf requests
+omit `alias`. Response body `model` is whatever the successful upstream returned.
+
+**Quality note:** hopping luna → gemini is intentional degradation, not a silent
+retry of the “same” model. Name composites for policy (`agent-cheap`), not as
+fake duplicates of a single vendor id.
 
 ## Why the catalog matters
 

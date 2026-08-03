@@ -291,7 +291,7 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 		corr = CorrelationIDFromContext(ctx)
 	}
 	entry := RequestLog{
-		Wire: wire, Model: rec.Model, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
+		Wire: wire, Model: rec.Model, Alias: rec.Alias, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
 		Status: status, LatencyMs: latency.Milliseconds(), PrincipalID: rec.PrincipalID,
 		Actor: host.Actor, Session: host.Session, CorrelationID: corr, Component: host.Component,
 	}
@@ -308,7 +308,7 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 
 	if usageSink != nil {
 		usageSink.RecordUsage(ctx, UsageEvent{
-			Wire: wire, Model: rec.Model, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
+			Wire: wire, Model: rec.Model, Alias: rec.Alias, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
 			PrincipalID: rec.PrincipalID, Actor: host.Actor, Session: host.Session,
 			CorrelationID: corr, Component: host.Component,
 			Status: status, LatencyMs: latency.Milliseconds(), Usage: rec.Usage,
@@ -326,6 +326,9 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 	}
 	if rec.Model != "" {
 		attrs = append(attrs, attribute.String(metricPrefix()+".model", rec.Model))
+	}
+	if rec.Alias != "" {
+		attrs = append(attrs, attribute.String(metricPrefix()+".alias", rec.Alias))
 	}
 	if rec.ProviderRef != "" {
 		attrs = append(attrs, attribute.String(metricPrefix()+".provider_ref", rec.ProviderRef))

@@ -24,6 +24,10 @@ func TestLogRequestFieldsNoSecrets(t *testing.T) {
 			t.Fatalf("missing field %q in %s", field, out)
 		}
 	}
+	// alias is omitempty — leaf LogRequest has no composite
+	if strings.Contains(out, `"alias"`) {
+		t.Fatalf("leaf request should omit alias: %s", out)
+	}
 	for _, forbidden := range []string{"sk-", "access_token", "refresh_token"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("secret leaked in log: %s", out)

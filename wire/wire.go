@@ -383,30 +383,60 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// Effort → SKU rewrite (Gemini) + body expand (hybrid thinking / ladder inject).
-	if isChatWire(wireID) && raw != nil {
-		used, err := e.Catalog.ApplyEffort(model, catalog.EffortFromBody(raw), plan.Targets)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if used != "" {
-			if m, ok := e.Catalog.Model(model); ok {
-				raw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			}
-		}
+	// Composite request: log hop as model, requested id as alias.
+	composite := len(plan.Models) > 0
+	if rec != nil && composite {
+		rec.Alias = model
 	}
-	failover := plan.Strategy == catalog.StrategyFailover
+	// Effort is applied per target hop: composite models (modality.models) map to
+	// different public ids, each with its own efforts list. Client body effort is
+	// the hint; hop ApplyEffort validates / rewrites SKU + ExpandEffortBody.
+	effortHint := ""
+	if isChatWire(wireID) && raw != nil {
+		effortHint = catalog.EffortFromBody(raw)
+	}
+	failover := plan.Strategy == catalog.StrategyFailover || composite
 	ingressPath := r.URL.Path
 	ctx := r.Context()
 	outHdr := r.Header.Clone()
 
-
 	for i, target := range plan.Targets {
+		hopRaw := raw
+		hopID := target.Model
+		if hopID == "" {
+			hopID = model
+		}
+		if rec != nil && composite {
+			// Real catalog hop (not the composite id) for usage / cost tracking.
+			rec.Model = hopID
+		}
+		if isChatWire(wireID) && raw != nil {
+			// Effort for the hop public id (target.Model), not the request alias.
+			tgs := []catalog.Target{target}
+			used, err := e.Catalog.ApplyEffort(hopID, effortHint, tgs)
+			if err != nil {
+				// Unsupported effort on this hop — try next if composite/failover.
+				if failover && i < len(plan.Targets)-1 {
+					slog.InfoContext(ctx, "effort skip hop", "requested", model, "hop", hopID, "err", err.Error())
+					continue
+				}
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			target = tgs[0]
+			if used != "" {
+				if m, ok := e.Catalog.Model(hopID); ok {
+					hopRaw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
+					if err != nil {
+						if failover && i < len(plan.Targets)-1 {
+							continue
+						}
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+			}
+		}
 		recordTarget(rec, target)
 		mat, err := e.Store.Get(ctx, target.CredentialProfile)
 		if err != nil {
@@ -417,9 +447,9 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 			http.Error(w, "upstream credential unavailable", http.StatusBadGateway)
 			return
 		}
-		resp, err := e.forwardTarget(ctx, wireID, ingressPath, target, mat, raw, r, outHdr)
+		resp, err := e.forwardTarget(ctx, wireID, ingressPath, target, mat, hopRaw, r, outHdr)
 		if err != nil {
-			slog.ErrorContext(ctx, "upstream forward", "provider_ref", target.ProviderRef, "model", target.UpstreamModel, "wire", wireID, "err", err)
+			slog.ErrorContext(ctx, "upstream forward", "provider_ref", target.ProviderRef, "model", target.UpstreamModel, "requested", model, "hop", target.Model, "wire", wireID, "err", err)
 			// errRouteNotRegistered happens before anything is sent (safe to fail over);
 			// otherwise only connection-setup failures are retryable so a non-idempotent
 			// POST is not executed twice.
@@ -435,6 +465,9 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 		}
 		if failover && upstream.Retryable(resp.StatusCode, nil) && i < len(plan.Targets)-1 {
 			resp.Body.Close()
+			if len(plan.Models) > 0 {
+				slog.InfoContext(ctx, "models chain hop fail", "requested", model, "hop", target.Model, "status", resp.StatusCode, "next", true)
+			}
 			continue
 		}
 		// CopyResponse / CopyResponseWithUsage own and close resp.Body.

@@ -37,9 +37,10 @@ client ── /v1/chat/completions ─▶ ingress auth ─▶ scope check ─▶
    model + wire.
 3. **Catalog resolve** (`catalog`) — the model name + ingress wire resolves to a
    **pool of targets** (provider + upstream model name), with a `failover` or
-   `round_robin` strategy.
+   `round_robin` strategy. Composite models use a modality **`models:`** list of
+   other public ids; each hop expands to its own provider pool (see [routing.md](routing.md)).
 4. **Wire engine** (`wire`) — the dispatcher. Picks a target, invokes its adapter,
-   handles failover to the next pool member.
+   handles failover to the next pool member (and across model hops when configured).
 5. **Adapter** (`adaptersdk`, `passthrough`, wire-translate) — translates the ingress
    protocol shape to the provider's, or passes through when they already match.
 6. **Credential inject** (`credential/inject`, `adaptersdk/upstreamauth`) — attaches the

@@ -25,6 +25,99 @@ func TestEffortFromBody(t *testing.T) {
 	}
 }
 
+func TestApplyEffort_publicIdEndingWithEffortTier(t *testing.T) {
+	t.Parallel()
+	// Product name ends with an effort token (…-max) but is not a multi-SKU pool.
+	// rewriting to …-medium would invent a non-existent model.
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"qwen": {
+				CredentialProfile: "qwen",
+				Surfaces: map[string]catalog.Surface{
+					"chat": {Protocol: "openai-chat-completions", BaseURL: "https://example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"qwen3.8-max": {
+				Modalities: map[string]catalog.Modality{
+					"chat": {
+						Wire: catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{
+							{ProviderRef: "qwen", Surface: "chat", Model: "qwen3.8-max"},
+						},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.MergeMeta(catalog.MetaDocument{
+		Models: map[string]catalog.ModelMeta{
+			"qwen3.8-max": {
+				Efforts:       []string{"minimal", "low", "medium", "high", "xhigh", "max"},
+				DefaultEffort: "medium",
+				ContextWindow: 1000000,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := cat.Resolve("qwen3.8-max", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	used, err := cat.ApplyEffort("qwen3.8-max", "medium", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "medium" {
+		t.Fatalf("used=%q", used)
+	}
+	if plan.Targets[0].UpstreamModel != "qwen3.8-max" {
+		t.Fatalf("must not rewrite qwen3.8-max → …-%s, got %q", used, plan.Targets[0].UpstreamModel)
+	}
+
+	// Facet SKUs must keep the same lean upstream (do not rewrite to qwen3.8-medium).
+	doc.Models["qwen3.8-max"].Modalities["image"] = catalog.Modality{
+		Wire: catalog.WireOpenAIChat,
+		Providers: []catalog.PoolEntry{
+			{ProviderRef: "qwen", Surface: "chat", Model: "qwen3.8-max"},
+		},
+	}
+	cat, err = catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.MergeMeta(catalog.MetaDocument{
+		Models: map[string]catalog.ModelMeta{
+			"qwen3.8-max": {
+				Efforts:       []string{"minimal", "low", "medium", "high", "xhigh", "max"},
+				DefaultEffort: "medium",
+				ContextWindow: 1000000,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Expand facets so Resolve("qwen3.8-max:image") works
+	// (NewFromDocument already expands :image from modalities)
+	planImg, err := cat.Resolve("qwen3.8-max:image", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cat.ApplyEffort("qwen3.8-max:image", "medium", planImg.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planImg.Targets[0].UpstreamModel != "qwen3.8-max" {
+		t.Fatalf("facet must not rewrite SKU, got %q", planImg.Targets[0].UpstreamModel)
+	}
+}
+
 func TestApplyEffort_bodyOnlyNoSKURewrite(t *testing.T) {
 	t.Parallel()
 	// OpenAI-style lean id: efforts are advertised but upstream model must not become gpt-5.5-high.

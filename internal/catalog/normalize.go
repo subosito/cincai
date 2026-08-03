@@ -166,6 +166,24 @@ func normalizeModalityRoute(route map[string]any, yamlKey, modality string) map[
 	} else if w := defaultWire(yamlKey); w != "" {
 		out["wire"] = w
 	}
+	// Composite model: ordered public model ids (xor with providers).
+	if hops, ok := route["models"].([]any); ok && len(hops) > 0 {
+		outHops := make([]any, 0, len(hops))
+		for _, item := range hops {
+			switch v := item.(type) {
+			case string:
+				if s := strings.TrimSpace(v); s != "" {
+					outHops = append(outHops, s)
+				}
+			default:
+				if s := fields.String(v); s != "" {
+					outHops = append(outHops, s)
+				}
+			}
+		}
+		out["models"] = outHops
+		return out
+	}
 	if ref := fields.String(route["provider_ref"]); ref != "" {
 		entry := map[string]any{"provider_ref": ref}
 		if model := fields.String(route["model"]); model != "" {

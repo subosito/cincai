@@ -59,10 +59,19 @@ type PoolEntry struct {
 }
 
 // Modality binds wire + pool.
+//
+// Exactly one of Providers or Models must be set:
+//   - Providers: leaf model — ordered upstream provider pool
+//   - Models: composite model — ordered public model ids (same catalog);
+//     each hop is fully resolved (its own provider pool or nested models)
 type Modality struct {
 	Wire      string      `yaml:"wire"`
 	Strategy  string      `yaml:"strategy,omitempty"`
-	Providers []PoolEntry `yaml:"providers"`
+	Providers []PoolEntry `yaml:"providers,omitempty"`
+	// Models is an ordered list of public catalog model ids. When set, this
+	// modality is a composite: resolve each hop and try them under Strategy
+	// (typically failover). Mutually exclusive with Providers / single provider_ref.
+	Models []string `yaml:"models,omitempty"`
 }
 
 // Model is a catalog id.
@@ -179,6 +188,9 @@ type Target struct {
 type RoutePlan struct {
 	Strategy string
 	Targets  []Target
+	// Models is set when the requested id is a composite (modality.models hops).
+	// Ordered public model ids as configured; empty for leaf models.
+	Models []string
 }
 
 // Resolve picks upstream route(s) for model + wire.
@@ -191,7 +203,22 @@ func (c *Catalog) Resolve(model, wire string) (RoutePlan, error) {
 // by catalog modality key (models.<id>.modalities.<key>). Empty modality auto-selects
 // when unambiguous. Same-wire multi-modality should be expanded to base:facet ids at
 // load (ExpandWireCollisions); residual collisions error with that guidance.
+//
+// When the modality sets models: [id, …], each hop is resolved (providers or nested
+// models) and targets are concatenated under strategy failover (or one hop for
+// round_robin). Cycles are rejected.
 func (c *Catalog) ResolveWithModality(model, wire, modality string) (RoutePlan, error) {
+	return c.resolveWithModality(model, wire, modality, nil)
+}
+
+func (c *Catalog) resolveWithModality(model, wire, modality string, stack []string) (RoutePlan, error) {
+	for _, s := range stack {
+		if s == model {
+			return RoutePlan{}, fmt.Errorf("model %q: cycle in models chain (%s → %s)", model, strings.Join(stack, " → "), model)
+		}
+	}
+	stack = append(stack, model)
+
 	m, ok := c.doc.Models[model]
 	if !ok {
 		return RoutePlan{}, fmt.Errorf("unknown model %q", model)
@@ -211,9 +238,15 @@ func (c *Catalog) ResolveWithModality(model, wire, modality string) (RoutePlan, 
 		return RoutePlan{}, err
 	}
 	mod := m.Modalities[modName]
-	if len(mod.Providers) == 0 {
-		return RoutePlan{}, fmt.Errorf("model %q: empty provider pool", model)
+	hasProviders := len(mod.Providers) > 0
+	hasModels := len(mod.Models) > 0
+	if hasProviders && hasModels {
+		return RoutePlan{}, fmt.Errorf("model %q modality %q: set providers or models, not both", model, modName)
 	}
+	if !hasProviders && !hasModels {
+		return RoutePlan{}, fmt.Errorf("model %q: empty provider pool (and no models chain)", model)
+	}
+
 	strat := mod.Strategy
 	if strat == "" {
 		strat = StrategyFailover
@@ -221,7 +254,12 @@ func (c *Catalog) ResolveWithModality(model, wire, modality string) (RoutePlan, 
 	if strat == "sticky" {
 		return RoutePlan{}, fmt.Errorf("strategy %q removed; use %q or %q", strat, StrategyFailover, StrategyRoundRobin)
 	}
-	poolKey := modName + "|" + wire
+
+	if hasModels {
+		return c.resolveModelChain(model, wire, modName, mod, strat, stack)
+	}
+
+	poolKey := model + "|" + modName + "|" + wire
 	entries, err := c.pickEntries(poolKey, strat, mod.Providers)
 	if err != nil {
 		return RoutePlan{}, err
@@ -235,6 +273,56 @@ func (c *Catalog) ResolveWithModality(model, wire, modality string) (RoutePlan, 
 		targets = append(targets, t)
 	}
 	return RoutePlan{Strategy: strat, Targets: targets}, nil
+}
+
+func (c *Catalog) resolveModelChain(model, wire, modName string, mod Modality, strat string, stack []string) (RoutePlan, error) {
+	hops := make([]string, 0, len(mod.Models))
+	for _, h := range mod.Models {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			return RoutePlan{}, fmt.Errorf("model %q modality %q: empty entry in models", model, modName)
+		}
+		hops = append(hops, h)
+	}
+	if len(hops) == 0 {
+		return RoutePlan{}, fmt.Errorf("model %q modality %q: empty models list", model, modName)
+	}
+
+	// round_robin: pick one hop, then use that hop's full resolve (its strategy).
+	if strat == StrategyRoundRobin {
+		c.mu.Lock()
+		poolKey := model + "|" + modName + "|" + wire + "|models"
+		st := c.rr[poolKey]
+		if st == nil {
+			st = &roundRobinState{}
+			c.rr[poolKey] = st
+		}
+		i := st.idx % len(hops)
+		st.idx++
+		c.mu.Unlock()
+		hop := hops[i]
+		hopPlan, err := c.resolveWithModality(hop, wire, "", stack)
+		if err != nil {
+			return RoutePlan{}, fmt.Errorf("model %q hop %q: %w", model, hop, err)
+		}
+		return RoutePlan{Strategy: hopPlan.Strategy, Targets: hopPlan.Targets, Models: hops}, nil
+	}
+
+	// failover (default): concatenate every hop's targets in order.
+	var targets []Target
+	for _, hop := range hops {
+		hopPlan, err := c.resolveWithModality(hop, wire, "", stack)
+		if err != nil {
+			return RoutePlan{}, fmt.Errorf("model %q hop %q: %w", model, hop, err)
+		}
+		// Nested composite keeps its own strategy among its targets; we flatten
+		// under parent failover so hop1's providers try fully before hop2.
+		targets = append(targets, hopPlan.Targets...)
+	}
+	if len(targets) == 0 {
+		return RoutePlan{}, fmt.Errorf("model %q: models chain resolved to no targets", model)
+	}
+	return RoutePlan{Strategy: StrategyFailover, Targets: targets, Models: hops}, nil
 }
 
 func pickModality(candidates []string, hint string) (string, error) {

@@ -38,6 +38,10 @@ type ModelListItem struct {
 	MaxOutputTokens int64 `json:"max_output_tokens,omitempty"`
 	// Pricing is optional operator cost estimate from models.meta.yaml.
 	Pricing *ModelPricing `json:"pricing,omitempty"`
+	// Models is set for composite catalog ids (modality.models hops): ordered
+	// public model ids tried under strategy failover. Omitted for leaf models.
+	// Same field name as providers.yaml modalities.<m>.models.
+	Models []string `json:"models,omitempty"`
 }
 
 // ModelsListResponse is OpenAI-shaped list envelope.
@@ -105,9 +109,34 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 				item.Pricing = &p
 			}
 		}
+		if hops := listModelChain(m); len(hops) > 0 {
+			item.Models = hops
+		}
 		data = append(data, item)
 	}
 	return ModelsListResponse{Object: "list", Data: data}
+}
+
+// listModelChain returns modality.models hops for listing. Prefers the primary
+// chat modality; otherwise the first modality that defines a models list.
+func listModelChain(m Model) []string {
+	prefer := []string{"chat", "anthropic_chat"}
+	for _, key := range prefer {
+		if md, ok := m.Modalities[key]; ok && len(md.Models) > 0 {
+			return append([]string(nil), md.Models...)
+		}
+	}
+	keys := make([]string, 0, len(m.Modalities))
+	for k := range m.Modalities {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if hops := m.Modalities[k].Models; len(hops) > 0 {
+			return append([]string(nil), hops...)
+		}
+	}
+	return nil
 }
 
 // listFacet derives the capability facet for GET /v1/models from modality keys

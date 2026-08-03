@@ -47,6 +47,18 @@ POST /v1/responses  {"model":"grok-4.3:search", …}
 
 **Primary** for a colliding wire group: `chat`, else `anthropic_chat`, else first sorted modality key.
 
+### Leaf pool vs composite hops
+
+Each modality route is either a **provider pool** or a **composite** of other public model ids — not both:
+
+| Field | Role |
+|-------|------|
+| `providers` / `provider_ref` | Leaf: ordered upstream providers for this id |
+| `models: [id, …]` | Composite: ordered catalog model ids; each hop expands to its own pool |
+
+Composites stay under the same `models:` root and appear on `GET /v1/models` with a
+JSON `"models"` array. Full rules: [routing.md](routing.md#composite-models-models-hops).
+
 ---
 
 ## Rule

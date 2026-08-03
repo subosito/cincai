@@ -80,13 +80,31 @@ func applyEffort(publicID string, m Model, effort string, targets []Target) (str
 // rewriteEffortUpstream maps a pool upstream id to the tier for effort.
 // Example: example-model-medium + high → example-model-high (SKU-tier models).
 //
-// Body-only models (OpenAI GPT, DeepSeek, …) use lean ids with no tier suffix:
-// leave UpstreamModel unchanged so the client body field (reasoning_effort /
-// reasoning.effort) is what the vendor consumes. Never invent publicID-effort.
+// Body-only models (OpenAI GPT, DeepSeek, Qwen, …) use lean ids with no tier
+// suffix: leave UpstreamModel unchanged so the client body field
+// (reasoning_effort / reasoning.effort) is what the vendor consumes.
+//
+// Never invent publicID-effort. Also never rewrite when upstream equals the
+// public id — product names can end with an effort-looking token (e.g.
+// qwen3.8-max) without being a multi-SKU effort pool (gemini-…-low).
 func rewriteEffortUpstream(publicID, upstream, effort string, efforts []string) string {
 	up := strings.TrimSpace(upstream)
+	pub := strings.TrimSpace(publicID)
+	// Facets (qwen3.8-max:image) share the base product id; strip before compare.
+	base := pub
+	if i := strings.Index(base, ":"); i >= 0 {
+		base = base[:i]
+	}
 	if up == "" {
-		up = strings.TrimSpace(publicID)
+		up = base
+		if up == "" {
+			up = pub
+		}
+	}
+	// Lean models: public base id is the whole SKU (e.g. qwen3.8-max ends with an
+	// effort-looking token but is not a multi-SKU pool like gemini-…-low).
+	if strings.EqualFold(up, pub) || strings.EqualFold(up, base) {
+		return up
 	}
 	lower := strings.ToLower(up)
 	for _, e := range efforts {

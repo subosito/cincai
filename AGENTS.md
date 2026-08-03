@@ -31,11 +31,12 @@ Optional multi-module workspace: create a local `go.work` (gitignored) with
 
 A `/v1/*` request travels: **ingress auth** (`ingress/keyring` verifies the `sk-dg-`
 gateway key) → **scope check** (`keyring.Authorize`) → **catalog resolve**
-(`catalog` turns the model name + wire into a target pool; optional
-**effort** rewrite) → **wire engine** (`wire`) dispatches to an **adapter**
-(`adaptersdk` / `passthrough` / wire-translate) → **upstream relay** (`upstream`)
-with the provider credential injected (`credential/inject`), using the provider's
-optional **proxy**. Study `wire/wire.go` first — it's the spine.
+(`catalog` turns the model name + wire into a target pool; optional **composite**
+`modality.models` hops, then **effort** rewrite per hop) → **wire engine** (`wire`)
+dispatches to an **adapter** (`adaptersdk` / `passthrough` / wire-translate) →
+**upstream relay** (`upstream`) with the provider credential injected
+(`credential/inject`), using the provider's optional **proxy**. Study
+`wire/wire.go` first — it's the spine.
 
 ## Catalog conventions (operators + examples)
 
@@ -64,7 +65,16 @@ meta. `GET /v1/models` exposes `context_window`, `max_output_tokens`, `pricing`,
 **Efforts:** clients send body `reasoning_effort` / `effort` / Responses
 `reasoning.effort`. Catalog lists only **supported** values so clients do not
 hardcode tiers. SKU-tier hosts (Gemini `…-low`) rewrite the pool model suffix;
-body-only hosts (GPT, DeepSeek) keep a lean upstream id and rely on the body.
+body-only hosts (GPT, DeepSeek, lean ids like `qwen3.8-max`) keep the upstream id
+and rely on the body — never invent `publicID-effort` when public equals upstream
+(including facets `base:image`).
+
+**Composite models:** modality sets **`models: [id, …]`** (xor `providers`).
+Resolve flattens hops under `strategy: failover` (retryable statuses only).
+`GET /v1/models` exposes the hop list as JSON `"models"`. Ingress: **`model`** =
+hop that served, **`alias`** = composite request id. Public surface: `catalog`
+(`Modality.Models`, `RoutePlan.Models`, `ModelListItem.Models`) and
+`observability` (`RequestLog.Alias`, `UsageEvent.Alias`) — not under `internal/`.
 
 See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 

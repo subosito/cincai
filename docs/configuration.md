@@ -113,7 +113,7 @@ See:
 
 - [catalog-capabilities-modalities.md](catalog-capabilities-modalities.md) — naming rules
 - [catalog-inject.md](catalog-inject.md) — upstream header injection
-- [routing.md](routing.md) — model pools, failover, proxy, efforts
+- [routing.md](routing.md) — model pools, composite `models:` hops, failover, proxy, efforts
 - [media.md](media.md) — image, speech, video wires
 
 `credential_profile` on each provider must match a profile stored in `broker.db` via `cincai credential import` or `cincai credential login`. There is no `credential_profiles` block in `cincai.yaml`.

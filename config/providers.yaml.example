@@ -89,6 +89,19 @@ models:
   # Client: {"model":"example-model","reasoning_effort":"high",…}
   # → upstream model becomes example-model-high.
 
+  # Composite model (optional). Same models: root; modality.models is an ordered
+  # list of public catalog ids. XOR with providers. GET /v1/models exposes
+  # "models": ["gpt-luna", "gemini-flash"]. See docs/routing.md.
+  #
+  # agent-cheap:
+  #   modalities:
+  #     chat:
+  #       wire: openai-chat-completions
+  #       strategy: failover
+  #       models:
+  #         - gpt-5.6-luna
+  #         - gemini-3.6-flash
+
   # --- image / video ------------------------------------------------------
   grok-imagine-image-quality:
     modalities:
