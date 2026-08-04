@@ -137,12 +137,29 @@ func FromOpenAI(req OpenAIRequest) (GenerateRequest, error) {
 		}
 	}
 	if decls := toolDeclarations(req.Tools); len(decls) > 0 {
-		out.Tools = []ToolGroup{{FunctionDeclarations: decls}}
+		out.Tools = append(out.Tools, ToolGroup{FunctionDeclarations: decls})
+	}
+	if hasNativeWebSearch(req.Tools) {
+		out.Tools = append(out.Tools, ToolGroup{GoogleSearch: &struct{}{}})
 	}
 	if len(out.Contents) == 0 {
 		return GenerateRequest{}, fmt.Errorf("gemini: no messages")
 	}
 	return out, nil
+}
+
+// hasNativeWebSearch reports whether the client asked for provider-executed
+// web search. Clients speak the OpenAI/xAI spelling ({"type":"web_search"});
+// Gemini's equivalent is a google_search tool group, so the adapter translates
+// rather than making every client learn a per-vendor shape.
+func hasNativeWebSearch(tools []OpenAITool) bool {
+	for _, tool := range tools {
+		switch strings.ToLower(strings.TrimSpace(tool.Type)) {
+		case "web_search", "web_search_preview", "google_search":
+			return true
+		}
+	}
+	return false
 }
 
 func toolDeclarations(tools []OpenAITool) []FunctionDeclaration {

@@ -58,8 +58,16 @@ type FunctionDeclaration struct {
 }
 
 // ToolGroup wraps functionDeclarations (Gemini tools array element).
+//
+// Gemini carries provider-executed tools as sibling fields in the same array
+// rather than as typed entries: {"functionDeclarations":[…]} and
+// {"google_search":{}} are both valid elements. That is why a client's
+// {"type":"web_search"} cannot be forwarded verbatim — it has to be
+// translated into this shape.
 type ToolGroup struct {
-	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations"`
+	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations,omitempty"`
+	// GoogleSearch enables Google Search grounding. Empty object when on.
+	GoogleSearch *struct{} `json:"google_search,omitempty"`
 }
 
 // GenerationConfig is a subset of generationConfig.
