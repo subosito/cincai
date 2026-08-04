@@ -338,7 +338,11 @@ func pickModality(candidates []string, hint string) (string, error) {
 	if len(candidates) == 1 {
 		return candidates[0], nil
 	}
-	// Operator-defined keys search_web/search_x: default chat when they are the only siblings.
+	// Operator-defined keys search_web/search_x are routing aliases: they only
+	// pick a route and never change the upstream request body, so when chat is
+	// present alongside only search siblings, default to chat. Selecting the
+	// search facet does not enable provider-executed search — the client must
+	// declare the provider's search tool in the request body.
 	if hasModality(candidates, "chat") && onlySearchSiblings(candidates) {
 		return "chat", nil
 	}

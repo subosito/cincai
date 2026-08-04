@@ -35,7 +35,7 @@ Fields:
 |-------|-------------|
 | `wire` | Ingress wire id (e.g. `openai-images-generations`) |
 | `model` | Catalog model that **served** the request (hop id for composites) |
-| `alias` | Composite catalog id from the request when `modality.models` was used (e.g. `agent-cheap`); omitted for leaf models. Not used for `model_group` discovery entries (those are not request ids). |
+| `alias` | Composite catalog id from the request when `modality.models` was used (e.g. `agent-cheap`); omitted for leaf models |
 | `provider_ref` | Selected provider from the catalog |
 | `protocol` | Upstream protocol / adapter surface |
 | `status` | HTTP status returned to the client |

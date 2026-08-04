@@ -24,7 +24,7 @@ func TestFromOpenAI_toolHistoryResolvesNameByCallID(t *testing.T) {
 					}{Name: "bash", Arguments: `{"command":"ls"}`},
 				}},
 			},
-			// Host-style: tool role with tool_call_id, no name
+			// host-app-style: tool role with tool_call_id, no name
 			{Role: "tool", ToolCallID: "call_abc", Content: "file.txt\n"},
 			{Role: "user", Content: "thanks"},
 		},

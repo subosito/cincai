@@ -33,8 +33,17 @@ At catalog load, **same-wire collisions** expand to distinct public ids (separat
 |-----------|-----------------|--------|
 | `chat` (primary) | `grok-4.3` | Prefer keep bare id for default chat |
 | `image` | `grok-4.3:image` | |
-| `search_web` | `grok-4.3:search` | facet alias: `search_web` → `search` |
-| `search_x` | `grok-4.3:search_x` | |
+| `search_web` | `grok-4.3:search` | facet alias: `search_web` → `search`; routing alias only (see below) |
+| `search_x` | `grok-4.3:search_x` | routing alias only (see below) |
+
+**Search facets are routing aliases, not search.** A `:search` / `:search_x`
+id only selects a route; the request body passes through unchanged and the
+gateway never injects tools. Provider-executed search happens only when the
+**client** declares the provider's search tool in the request body (e.g.
+Responses `tools: [{"type": "web_search"}]`) — and that works on the bare
+model id just as well. A request to the faceted id without the declared tool
+reaches the provider with no executable search and produces an unexecuted
+search call.
 
 **Client contract:** standard path + body `model` only (no custom routing headers).
 

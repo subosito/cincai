@@ -143,6 +143,11 @@ func cincaiModality(name string) string {
 		return "voice"
 	case "speech_gen":
 		return "speech_gen"
+	// search_web / search_x are routing aliases only: they select a route for
+	// the expanded :search / :search_x facet ids and do NOT enable
+	// provider-executed search. Search happens when the client declares the
+	// provider's tool in the request body (e.g. Responses
+	// tools:[{"type":"web_search"}]) — which works on the bare model id too.
 	case "search_web":
 		return "search_web"
 	case "search_x":
