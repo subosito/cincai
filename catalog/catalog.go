@@ -85,7 +85,12 @@ type Model struct {
 	Efforts []string `yaml:"efforts,omitempty"`
 	// DefaultEffort is applied when the client omits effort. Must be in Efforts.
 	DefaultEffort string `yaml:"default_effort,omitempty"`
-	Modalities    map[string]Modality `yaml:"modalities"`
+	// NativeTools are provider-executed tools this model can run, authored as
+	// the wire-shaped declarations a client sends (e.g. [{type: web_search}]).
+	// Published on /v1/models so clients read capability from the catalog
+	// instead of repeating it in their own config.
+	NativeTools []map[string]any    `yaml:"native_tools,omitempty"`
+	Modalities  map[string]Modality `yaml:"modalities"`
 }
 
 // Document is providers.yaml root.
@@ -338,36 +343,10 @@ func pickModality(candidates []string, hint string) (string, error) {
 	if len(candidates) == 1 {
 		return candidates[0], nil
 	}
-	// Operator-defined keys search_web/search_x are routing aliases: they only
-	// pick a route and never change the upstream request body, so when chat is
-	// present alongside only search siblings, default to chat. Selecting the
-	// search facet does not enable provider-executed search — the client must
-	// declare the provider's search tool in the request body.
-	if hasModality(candidates, "chat") && onlySearchSiblings(candidates) {
-		return "chat", nil
-	}
+	// A same-wire collision that survived expand is a config error: distinct
+	// ids are required. There is no search special case — provider-executed
+	// search is a client-declared tool on the bare model, not a modality.
 	return "", fmt.Errorf("multiple modalities for wire: %s (use distinct model ids base%sfacet; catalog expand should have split these at load)", strings.Join(candidates, ", "), FacetSeparator)
-}
-
-func hasModality(candidates []string, name string) bool {
-	for _, c := range candidates {
-		if c == name {
-			return true
-		}
-	}
-	return false
-}
-
-func onlySearchSiblings(candidates []string) bool {
-	for _, name := range candidates {
-		if name == "chat" {
-			continue
-		}
-		if name != "search_web" && name != "search_x" {
-			return false
-		}
-	}
-	return true
 }
 
 func (c *Catalog) targetFromEntry(model string, entry PoolEntry, wire string) (Target, error) {

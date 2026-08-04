@@ -15,8 +15,8 @@ func TestDefaultModalityForWire(t *testing.T) {
 	}
 }
 
-// After expand, chat+search_web under one authoring id become bare + :search.
-func TestExpand_ChatAndSearchBecomeDistinctModels(t *testing.T) {
+// After expand, chat+image on one authoring id become bare + :image.
+func TestExpand_ChatAndImageBecomeDistinctModels(t *testing.T) {
 	doc := catalog.Document{
 		Providers: map[string]catalog.Provider{
 			"vendor-chat": {
@@ -32,8 +32,8 @@ func TestExpand_ChatAndSearchBecomeDistinctModels(t *testing.T) {
 		Models: map[string]catalog.Model{
 			"m": {
 				Modalities: map[string]catalog.Modality{
-					"chat":       {Wire: catalog.WireOpenAIResponses, Providers: []catalog.PoolEntry{{ProviderRef: "vendor-chat"}}},
-					"search_web": {Wire: catalog.WireOpenAIResponses, Providers: []catalog.PoolEntry{{ProviderRef: "vendor-chat"}}},
+					"chat":  {Wire: catalog.WireOpenAIResponses, Providers: []catalog.PoolEntry{{ProviderRef: "vendor-chat"}}},
+					"image": {Wire: catalog.WireOpenAIResponses, Providers: []catalog.PoolEntry{{ProviderRef: "vendor-chat"}}},
 				},
 			},
 		},
@@ -45,8 +45,8 @@ func TestExpand_ChatAndSearchBecomeDistinctModels(t *testing.T) {
 	if _, err := cat.Resolve("m", catalog.WireOpenAIResponses); err != nil {
 		t.Fatalf("bare chat: %v", err)
 	}
-	if _, err := cat.Resolve("m:search", catalog.WireOpenAIResponses); err != nil {
-		t.Fatalf("search facet: %v", err)
+	if _, err := cat.Resolve("m:image", catalog.WireOpenAIResponses); err != nil {
+		t.Fatalf("image facet: %v", err)
 	}
 }
 

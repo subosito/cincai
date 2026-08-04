@@ -22,7 +22,11 @@ func Load(path string) (*corecatalog.Catalog, error) {
 		root["providers"] = normalizeProviders(providers)
 	}
 	if models, ok := root["models"].(map[string]any); ok {
-		root["models"] = normalizeModels(models)
+		normalized, err := normalizeModels(models)
+		if err != nil {
+			return nil, err
+		}
+		root["models"] = normalized
 	}
 	delete(root, "router")
 	delete(root, "billing")

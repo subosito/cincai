@@ -28,14 +28,6 @@ func TestExpandWireCollisions_GrokStyle(t *testing.T) {
 						Wire:      catalog.WireOpenAIResponses,
 						Providers: []catalog.PoolEntry{{ProviderRef: "xai", Surface: "image"}},
 					},
-					"search_web": {
-						Wire:      catalog.WireOpenAIResponses,
-						Providers: []catalog.PoolEntry{{ProviderRef: "xai", Surface: "chat"}},
-					},
-					"search_x": {
-						Wire:      catalog.WireOpenAIResponses,
-						Providers: []catalog.PoolEntry{{ProviderRef: "xai", Surface: "chat"}},
-					},
 				},
 			},
 		},
@@ -50,14 +42,10 @@ func TestExpandWireCollisions_GrokStyle(t *testing.T) {
 		t.Fatalf("bare resolve: %v", err)
 	}
 	// Facets are public model ids.
-	for _, id := range []string{"grok-4.3:image", "grok-4.3:search", "grok-4.3:search_x"} {
+	for _, id := range []string{"grok-4.3:image"} {
 		if _, err := cat.Resolve(id, catalog.WireOpenAIResponses); err != nil {
 			t.Fatalf("resolve %s: %v", id, err)
 		}
-	}
-	// search_web facet is shortened to :search
-	if _, err := cat.Resolve("grok-4.3:search_web", catalog.WireOpenAIResponses); err == nil {
-		t.Fatal("expected search_web to expand as :search, not :search_web")
 	}
 
 	// GET /v1/models advertises facet from modalities (not by parsing id colons).
@@ -67,10 +55,8 @@ func TestExpandWireCollisions_GrokStyle(t *testing.T) {
 		byID[it.ID] = it
 	}
 	wantFacet := map[string]string{
-		"grok-4.3":          "chat",
-		"grok-4.3:image":    "image",
-		"grok-4.3:search":   "search",
-		"grok-4.3:search_x": "search_x",
+		"grok-4.3":       "chat",
+		"grok-4.3:image": "image",
 	}
 	for id, want := range wantFacet {
 		it, ok := byID[id]
@@ -149,10 +135,12 @@ func TestExpandWireCollisions_ClashError(t *testing.T) {
 }
 
 func TestFacetFromModality(t *testing.T) {
-	if got := catalog.FacetFromModality("search_web"); got != "search" {
-		t.Fatalf("got %q", got)
+	for _, key := range []string{"image", "video", "chat_completions"} {
+		if got := catalog.FacetFromModality(key); got != key {
+			t.Fatalf("got %q want %q (facet token is the modality key)", got, key)
+		}
 	}
-	if got := catalog.FacetFromModality("image"); got != "image" {
-		t.Fatalf("got %q", got)
+	if got := catalog.FacetFromModality(" image "); got != "image" {
+		t.Fatalf("got %q want trimmed token", got)
 	}
 }

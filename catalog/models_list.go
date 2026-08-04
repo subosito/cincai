@@ -38,6 +38,14 @@ type ModelListItem struct {
 	MaxOutputTokens int64 `json:"max_output_tokens,omitempty"`
 	// Pricing is optional operator cost estimate from models.meta.yaml.
 	Pricing *ModelPricing `json:"pricing,omitempty"`
+	// NativeTools are provider-executed tools this model can run, as the
+	// wire-shaped declarations a client merges into its request
+	// (e.g. [{"type":"web_search"}]).
+	//
+	// Capability is a property of the model, and the gateway already knows it,
+	// so publishing it here lets every client stop carrying the same list in
+	// config — and stops a client claiming a tool the model cannot run.
+	NativeTools []map[string]any `json:"native_tools,omitempty"`
 	// Models is set for composite catalog ids (modality.models hops): ordered
 	// public model ids tried under strategy failover. Omitted for leaf models.
 	// Same field name as providers.yaml modalities.<m>.models.
@@ -96,6 +104,9 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 		}
 		if def := strings.TrimSpace(m.DefaultEffort); def != "" {
 			item.DefaultEffort = def
+		}
+		if len(m.NativeTools) > 0 {
+			item.NativeTools = append([]map[string]any(nil), m.NativeTools...)
 		}
 		if meta, ok := c.MetaFor(id); ok {
 			if meta.ContextWindow > 0 {

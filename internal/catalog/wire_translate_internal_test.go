@@ -81,7 +81,11 @@ models:
 		t.Fatal(err)
 	}
 	root["providers"] = normalizeProviders(root["providers"].(map[string]any))
-	root["models"] = normalizeModels(root["models"].(map[string]any))
+	normalized, err := normalizeModels(root["models"].(map[string]any))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root["models"] = normalized
 	out, err := yaml.Marshal(root)
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,11 @@ func documentFromRoot(t *testing.T, root map[string]any) corecatalog.Document {
 		root["providers"] = normalizeProviders(providers)
 	}
 	if models, ok := root["models"].(map[string]any); ok {
-		root["models"] = normalizeModels(models)
+		normalized, err := normalizeModels(models)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root["models"] = normalized
 	}
 	out, err := yaml.Marshal(root)
 	if err != nil {

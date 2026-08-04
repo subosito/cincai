@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/subosito/cincai/internal/catalog/fields"
@@ -79,7 +80,7 @@ func capabilitySurfaceKey(cap string) string {
 	return strings.TrimSpace(cap)
 }
 
-func normalizeModels(in map[string]any) map[string]any {
+func normalizeModels(in map[string]any) (map[string]any, error) {
 	out := make(map[string]any, len(in))
 	for name, raw := range in {
 		spec, ok := raw.(map[string]any)
@@ -87,15 +88,36 @@ func normalizeModels(in map[string]any) map[string]any {
 			out[name] = raw
 			continue
 		}
-		out[name] = normalizeModelSpec(spec)
+		norm, err := normalizeModelSpec(spec)
+		if err != nil {
+			return nil, fmt.Errorf("models.%s: %w", name, err)
+		}
+		out[name] = norm
 	}
-	return out
+	return out, nil
 }
 
-func normalizeModelSpec(spec map[string]any) map[string]any {
+// removedModalityHint returns operator guidance for modality keys that used to
+// exist and were removed. Returning an error beats the silent `continue` used
+// for unknown keys: a deployed catalog carrying `search_web:` would otherwise
+// load with the modality quietly gone, and the operator would only discover it
+// from a missing model id. Loud at load time is the kinder failure.
+func removedModalityHint(name string) string {
+	switch strings.TrimSpace(name) {
+	case "search_web", "search_x":
+		return "modality removed: this was a routing alias and never enabled " +
+			"search. Provider-executed search is enabled by the client declaring " +
+			"the provider's search tool in the request body on the bare model id " +
+			`(e.g. Responses tools:[{"type":"web_search"}]). Delete this key.`
+	default:
+		return ""
+	}
+}
+
+func normalizeModelSpec(spec map[string]any) (map[string]any, error) {
 	mods, ok := spec["modalities"].(map[string]any)
 	if !ok {
-		return spec
+		return spec, nil
 	}
 	outMods := make(map[string]any, len(mods))
 	for modName, raw := range mods {
@@ -103,6 +125,9 @@ func normalizeModelSpec(spec map[string]any) map[string]any {
 		if !ok {
 			outMods[modName] = raw
 			continue
+		}
+		if hint := removedModalityHint(modName); hint != "" {
+			return nil, fmt.Errorf("modalities.%s: %s", modName, hint)
 		}
 		target := cincaiModality(modName)
 		if target == "" {
@@ -112,12 +137,12 @@ func normalizeModelSpec(spec map[string]any) map[string]any {
 	}
 	out := map[string]any{"modalities": outMods}
 	// Preserve model-level effort metadata (not modality-scoped).
-	for _, k := range []string{"efforts", "default_effort"} {
+	for _, k := range []string{"efforts", "default_effort", "native_tools"} {
 		if v, ok := spec[k]; ok {
 			out[k] = v
 		}
 	}
-	return out
+	return out, nil
 }
 
 func cincaiModality(name string) string {
@@ -143,15 +168,9 @@ func cincaiModality(name string) string {
 		return "voice"
 	case "speech_gen":
 		return "speech_gen"
-	// search_web / search_x are routing aliases only: they select a route for
-	// the expanded :search / :search_x facet ids and do NOT enable
-	// provider-executed search. Search happens when the client declares the
-	// provider's tool in the request body (e.g. Responses
-	// tools:[{"type":"web_search"}]) — which works on the bare model id too.
-	case "search_web":
-		return "search_web"
-	case "search_x":
-		return "search_x"
+	// No search modality: provider-executed search is a tool the client
+	// declares in the request body on the bare model id, not a route.
+	// removedModalityHint rejects the old search_web / search_x keys.
 	case "anthropic_chat":
 		return "anthropic_chat"
 	case "ocr":
@@ -290,7 +309,7 @@ func defaultWire(yamlKey string) string {
 	switch strings.TrimSpace(yamlKey) {
 	case "voice":
 		return "openai-audio-transcriptions"
-	case "chat", "anthropic_chat", "image", "video", "search_web", "search_x":
+	case "chat", "anthropic_chat", "image", "video":
 		return "openai-chat-completions"
 	case "embed":
 		return "openai-embeddings"

@@ -13,18 +13,12 @@ const FacetSeparator = ":"
 
 // ExpandWireCollisions rewrites models so that no model id has two modalities
 // on the same wire. Nested multi-modality authoring stays valid: operators can
-// write chat+image+search under one id; load expands non-primary rows to
+// write chat+image under one id; load expands non-primary rows to
 // base:facet public ids (e.g. grok-4.3:image). Clients then use standard
 // path + model only.
 //
 // Primary for a colliding wire group: prefer "chat", then "anthropic_chat",
-// else the first name sorted. Facet tokens default to the modality key;
-// search_web becomes "search" for a shorter public id.
-//
-// Note: a search facet (:search, :search_x) is a routing alias only — it picks
-// a route and passes the request body through unchanged. Provider-executed
-// search requires the client to declare the provider's search tool in the
-// request body (e.g. Responses tools:[{"type":"web_search"}]).
+// else the first name sorted. Facet tokens default to the modality key.
 //
 // Modalities on distinct wires remain on the original id (path already
 // disambiguates). Explicit models that would clash with an expanded id error.
@@ -110,16 +104,8 @@ func assertExpandTargetFree(doc *Document, pending map[string]Model, flatID, fro
 }
 
 // FacetFromModality maps a modalities.<key> name to the public :facet token.
-// The resulting facet is a routing alias only — notably ":search" does not
-// enable provider-executed search; the client must declare the provider's
-// search tool in the request body (e.g. Responses tools:[{"type":"web_search"}]).
 func FacetFromModality(modKey string) string {
-	switch strings.TrimSpace(modKey) {
-	case "search_web":
-		return "search"
-	default:
-		return strings.TrimSpace(modKey)
-	}
+	return strings.TrimSpace(modKey)
 }
 
 func pickPrimaryModality(names []string) string {
