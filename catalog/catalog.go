@@ -93,10 +93,21 @@ type Model struct {
 	Modalities  map[string]Modality `yaml:"modalities"`
 }
 
+// ModelGroup is a named set of public model ids for client discovery (menus,
+// pickers). Not callable: POST with model=<group id> is rejected. Listed on
+// GET /v1/models with object "model_group".
+type ModelGroup struct {
+	// Description is optional operator/UI text.
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	// Models is the ordered member list (callable catalog ids: leaf or composite).
+	Models []string `yaml:"models" json:"models"`
+}
+
 // Document is providers.yaml root.
 type Document struct {
-	Providers map[string]Provider `yaml:"providers"`
-	Models    map[string]Model    `yaml:"models"`
+	Providers map[string]Provider   `yaml:"providers"`
+	Models    map[string]Model      `yaml:"models"`
+	Groups    map[string]ModelGroup `yaml:"groups,omitempty"`
 }
 
 // Catalog is loaded operator config.

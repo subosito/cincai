@@ -30,7 +30,11 @@ A model id can also be a **composite**: ordered hops to *other* catalog models
 (`modality.models`) so a cheap default can fall through luna → gemini → deepseek
 on retryable failures. Same `models:` root, listed on `GET /v1/models` with a
 `models` array; ingress logs use **`model`** for the hop that served and **`alias`**
-for the composite id. See [docs/routing.md](docs/routing.md).
+for the composite id.
+
+**Groups** (`groups:` root) are named sets for client pickers (`object:
+"model_group"` on `GET /v1/models`). They are **not** request model ids — the
+client still chooses a member. See [docs/routing.md](docs/routing.md).
 
 ## Quick start
 
@@ -74,7 +78,7 @@ no network or real credentials needed.
 | [docs/cli.md](docs/cli.md) | **CLI reference** — `init`, `serve`, `catalog`, `credential`, `keys` |
 | [docs/configuration.md](docs/configuration.md) | **Configuration** — `cincai.yaml`, env vars, adapters |
 | [docs/credential.md](docs/credential.md) | **Credentials** — broker, profiles, API keys vs OAuth |
-| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, composite `models:` hops, failover, proxy, efforts |
+| [docs/routing.md](docs/routing.md) | **Model-oriented routing** — pools, composite hops, model groups, failover, proxy, efforts |
 | [AGENTS.md](AGENTS.md) | Contributor / agent working notes |
 | [docs/media.md](docs/media.md) | **Media routing** — image, speech, video |
 | [docs/catalog-capabilities-modalities.md](docs/catalog-capabilities-modalities.md) | `capabilities` vs `modalities` naming |

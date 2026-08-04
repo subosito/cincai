@@ -28,6 +28,40 @@ func normalizeProviders(in map[string]any) map[string]any {
 	return out
 }
 
+// normalizeGroups keeps groups.<id>.models as ordered string lists (and optional description).
+func normalizeGroups(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for name, raw := range in {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			out[name] = raw
+			continue
+		}
+		g := map[string]any{}
+		if desc := fields.String(entry["description"]); desc != "" {
+			g["description"] = desc
+		}
+		if hops, ok := entry["models"].([]any); ok {
+			members := make([]any, 0, len(hops))
+			for _, item := range hops {
+				switch v := item.(type) {
+				case string:
+					if s := strings.TrimSpace(v); s != "" {
+						members = append(members, s)
+					}
+				default:
+					if s := fields.String(v); s != "" {
+						members = append(members, s)
+					}
+				}
+			}
+			g["models"] = members
+		}
+		out[name] = g
+	}
+	return out
+}
+
 func normalizeProviderEntry(entry map[string]any) map[string]any {
 	if out, ok := normalizeCapabilitiesProvider(entry); ok {
 		return out

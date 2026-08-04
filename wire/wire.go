@@ -378,6 +378,11 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 	}
 	// Routing is model id + wire only. Same-wire multi-modality expands to
 	// base:facet public ids at catalog load (no custom client headers).
+	// groups: entries are discovery-only — not valid request model ids.
+	if e.Catalog.IsModelGroup(model) {
+		http.Error(w, fmt.Sprintf("model %q is a model_group (not callable; pick a member from GET /v1/models)", model), http.StatusBadRequest)
+		return
+	}
 	plan, err := e.Catalog.ResolveWithModality(model, wireID, catalog.DefaultModalityForWire(wireID))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

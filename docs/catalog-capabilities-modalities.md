@@ -22,9 +22,8 @@ still group related uses under one model key:
 models:
   grok-4.3:
     modalities:
-      chat:       { wire: openai-responses, provider_ref: xai, … }
-      image:      { wire: openai-responses, provider_ref: xai, … }
-      search_web: { wire: openai-responses, provider_ref: xai, … }
+      chat:  { wire: openai-responses, provider_ref: xai, … }
+      image: { wire: openai-responses, provider_ref: xai, … }
 ```
 
 At catalog load, **same-wire collisions** expand to distinct public ids (separator `:`):
@@ -33,23 +32,19 @@ At catalog load, **same-wire collisions** expand to distinct public ids (separat
 |-----------|-----------------|--------|
 | `chat` (primary) | `grok-4.3` | Prefer keep bare id for default chat |
 | `image` | `grok-4.3:image` | |
-| `search_web` | `grok-4.3:search` | facet alias: `search_web` → `search`; routing alias only (see below) |
-| `search_x` | `grok-4.3:search_x` | routing alias only (see below) |
 
-**Search facets are routing aliases, not search.** A `:search` / `:search_x`
-id only selects a route; the request body passes through unchanged and the
-gateway never injects tools. Provider-executed search happens only when the
-**client** declares the provider's search tool in the request body (e.g.
-Responses `tools: [{"type": "web_search"}]`) — and that works on the bare
-model id just as well. A request to the faceted id without the declared tool
-reaches the provider with no executable search and produces an unexecuted
-search call.
+**Provider-executed search is not a catalog modality.** It is enabled by the
+**client** declaring the provider's search tool in the request body (e.g.
+Responses `tools: [{"type": "web_search"}]`) on the bare model id; the gateway
+never injects tools and search facets no longer exist. `search_web` /
+`search_x` modality keys are rejected at catalog load with an error pointing
+at the client-declared tool instead.
 
 **Client contract:** standard path + body `model` only (no custom routing headers).
 
 ```bash
 POST /v1/responses  {"model":"grok-4.3", …}
-POST /v1/responses  {"model":"grok-4.3:search", …}
+POST /v1/responses  {"model":"grok-4.3:image", …}
 ```
 
 **Different wires** under one id (e.g. `chat` + `embed`) are **not** expanded — the URL already disambiguates.
@@ -67,6 +62,10 @@ Each modality route is either a **provider pool** or a **composite** of other pu
 
 Composites stay under the same `models:` root and appear on `GET /v1/models` with a
 JSON `"models"` array. Full rules: [routing.md](routing.md#composite-models-models-hops).
+
+**Groups** use a separate root `groups:` (not under modalities). They appear on
+`GET /v1/models` as `"object":"model_group"` and are not request model ids.
+See [routing.md](routing.md#model-groups-groups-root).
 
 ---
 

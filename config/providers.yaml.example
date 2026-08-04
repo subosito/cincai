@@ -109,9 +109,8 @@ models:
 #     description: Code / PR review
 #     models:
 #       - glm-5.2
-#       - gpt-5.6-sol
+#       - gpt-5.6-luna
 #       - qwen3.8-max
-#       - claude-opus-5
 
   # --- image / video ------------------------------------------------------
   grok-imagine-image-quality:

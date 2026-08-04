@@ -7,7 +7,16 @@ import (
 	"github.com/subosito/cincai/ingress/keyring"
 )
 
-// ModelListItem is one catalog model for GET /v1/models.
+// Object type strings for GET /v1/models items (OpenAI-style "object" field).
+const (
+	ObjectModel      = "model"
+	ObjectModelGroup = "model_group"
+)
+
+// ModelListItem is one catalog entry for GET /v1/models.
+//
+// object is "model" (callable leaf or composite) or "model_group" (named set
+// for client pickers; not a valid request model id).
 //
 // Wire / Wires are cincai extensions beyond the minimal OpenAI model object so
 // clients (e.g. mow) can pick the correct client protocol without guessing from
@@ -17,6 +26,8 @@ type ModelListItem struct {
 	Object  string `json:"object"`
 	Created int64  `json:"created"`
 	OwnedBy string `json:"owned_by"`
+	// Description is optional text (model_group entries; omitted on models).
+	Description string `json:"description,omitempty"`
 	// Wire is the preferred chat/agent wire for this model (if any).
 	Wire string `json:"wire,omitempty"`
 	// Wires lists every catalog wire this model is registered on.
@@ -46,10 +57,13 @@ type ModelListItem struct {
 	// so publishing it here lets every client stop carrying the same list in
 	// config — and stops a client claiming a tool the model cannot run.
 	NativeTools []map[string]any `json:"native_tools,omitempty"`
-	// Models is set for composite catalog ids (modality.models hops): ordered
-	// public model ids tried under strategy failover. Omitted for leaf models.
-	// Same field name as providers.yaml modalities.<m>.models.
+	// Models is:
+	//   - composite model (object=model): ordered failover hops
+	//   - model_group: ordered member ids the client may choose among
+	// Omitted when empty.
 	Models []string `json:"models,omitempty"`
+	// Groups lists group ids that include this model (object=model only).
+	Groups []string `json:"groups,omitempty"`
 }
 
 // ModelsListResponse is OpenAI-shaped list envelope.
@@ -76,13 +90,15 @@ func (c *Catalog) ListModelsFor(scopes []string) ModelsListResponse {
 }
 
 func (c *Catalog) listModels(scopes []string) ModelsListResponse {
+	membership := c.groupMembership() // model id → group ids
+
 	ids := make([]string, 0, len(c.doc.Models))
 	for id := range c.doc.Models {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 
-	data := make([]ModelListItem, 0, len(ids))
+	data := make([]ModelListItem, 0, len(ids)+len(c.doc.Groups))
 	for _, id := range ids {
 		m := c.doc.Models[id]
 		wires := modelWires(m)
@@ -92,7 +108,7 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 		sort.Strings(wires)
 		item := ModelListItem{
 			ID:      id,
-			Object:  "model",
+			Object:  ObjectModel,
 			Created: c.loadedAt,
 			OwnedBy: "cincai",
 			Wire:    preferredWireForModel(m, wires),
@@ -123,9 +139,88 @@ func (c *Catalog) listModels(scopes []string) ModelsListResponse {
 		if hops := listModelChain(m); len(hops) > 0 {
 			item.Models = hops
 		}
+		if gs := membership[id]; len(gs) > 0 {
+			item.Groups = gs
+		}
 		data = append(data, item)
 	}
+
+	// model_group entries (not callable).
+	gids := make([]string, 0, len(c.doc.Groups))
+	for id := range c.doc.Groups {
+		gids = append(gids, id)
+	}
+	sort.Strings(gids)
+	for _, gid := range gids {
+		g := c.doc.Groups[gid]
+		members := make([]string, 0, len(g.Models))
+		for _, mid := range g.Models {
+			mid = strings.TrimSpace(mid)
+			if mid == "" {
+				continue
+			}
+			if scopes != nil {
+				m, ok := c.doc.Models[mid]
+				if !ok || !keyring.FilterModels(scopes, mid, modelWires(m)) {
+					continue
+				}
+			}
+			members = append(members, mid)
+		}
+		if len(members) == 0 {
+			// No visible members under this key's scopes — omit the group.
+			continue
+		}
+		item := ModelListItem{
+			ID:          gid,
+			Object:      ObjectModelGroup,
+			Created:     c.loadedAt,
+			OwnedBy:     "cincai",
+			Description: strings.TrimSpace(g.Description),
+			Models:      members,
+		}
+		data = append(data, item)
+	}
+
 	return ModelsListResponse{Object: "list", Data: data}
+}
+
+// groupMembership maps each model id to sorted group ids that list it.
+func (c *Catalog) groupMembership() map[string][]string {
+	out := map[string][]string{}
+	if c == nil {
+		return out
+	}
+	gids := make([]string, 0, len(c.doc.Groups))
+	for id := range c.doc.Groups {
+		gids = append(gids, id)
+	}
+	sort.Strings(gids)
+	for _, gid := range gids {
+		for _, mid := range c.doc.Groups[gid].Models {
+			mid = strings.TrimSpace(mid)
+			if mid == "" {
+				continue
+			}
+			out[mid] = append(out[mid], gid)
+		}
+	}
+	return out
+}
+
+// Group returns a named model group if present.
+func (c *Catalog) Group(id string) (ModelGroup, bool) {
+	if c == nil {
+		return ModelGroup{}, false
+	}
+	g, ok := c.doc.Groups[id]
+	return g, ok
+}
+
+// IsModelGroup reports whether id is a groups: entry (not a callable model).
+func (c *Catalog) IsModelGroup(id string) bool {
+	_, ok := c.Group(id)
+	return ok
 }
 
 // listModelChain returns modality.models hops for listing. Prefers the primary

@@ -28,6 +28,9 @@ func Load(path string) (*corecatalog.Catalog, error) {
 		}
 		root["models"] = normalized
 	}
+	if groups, ok := root["groups"].(map[string]any); ok {
+		root["groups"] = normalizeGroups(groups)
+	}
 	delete(root, "router")
 	delete(root, "billing")
 	delete(root, "components")
