@@ -61,14 +61,21 @@ type FunctionDeclaration struct {
 //
 // Gemini carries provider-executed tools as sibling fields in the same array
 // rather than as typed entries: {"functionDeclarations":[…]} and
-// {"google_search":{}} are both valid elements. That is why a client's
+// {"googleSearch":{}} are both valid elements. That is why a client's
 // {"type":"web_search"} cannot be forwarded verbatim — it has to be
 // translated into this shape.
+//
+// REST / GenAI SDK use camelCase googleSearch. The snake form google_search
+// still works for search-only on some hosts but Cloud Code mishandles it
+// when mixed with functionDeclarations (toolConfig opt-in is stripped).
 type ToolGroup struct {
 	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations,omitempty"`
 	// GoogleSearch enables Google Search grounding. Empty object when on.
-	GoogleSearch *struct{} `json:"google_search,omitempty"`
+	GoogleSearch *GoogleSearch `json:"googleSearch,omitempty"`
 }
+
+// GoogleSearch is the built-in Google Search tool (empty object is enough).
+type GoogleSearch struct{}
 
 // GenerationConfig is a subset of generationConfig.
 type GenerationConfig struct {
@@ -85,10 +92,10 @@ type ThinkingConfig struct {
 
 // GenerateRequest is the body for generateContent / streamGenerateContent.
 type GenerateRequest struct {
-	SystemInstruction *Content          `json:"systemInstruction,omitempty"`
-	Contents          []Content         `json:"contents"`
-	GenerationConfig  GenerationConfig  `json:"generationConfig,omitempty"`
-	Tools             []ToolGroup       `json:"tools,omitempty"`
+	SystemInstruction *Content         `json:"systemInstruction,omitempty"`
+	Contents          []Content        `json:"contents"`
+	GenerationConfig  GenerationConfig `json:"generationConfig,omitempty"`
+	Tools             []ToolGroup      `json:"tools,omitempty"`
 }
 
 // UsageMetadata is prompt/candidate token counts from Gemini.

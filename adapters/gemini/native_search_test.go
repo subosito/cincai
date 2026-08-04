@@ -51,9 +51,11 @@ func TestNativeWebSearchBecomesGoogleSearch(t *testing.T) {
 			wantFuncs: 1,
 		},
 		{
-			name:       "search alongside function tools",
+			// Mixed search+functions: drop search (Cloud Code/Vertex cannot
+			// forward includeServerSideToolInvocations without 400).
+			name:       "search alongside function tools drops search",
 			tools:      []OpenAITool{fnTool("read"), {Type: "web_search"}},
-			wantSearch: true,
+			wantSearch: false,
 			wantFuncs:  1,
 		},
 		{
@@ -88,18 +90,40 @@ func TestNativeWebSearchBecomesGoogleSearch(t *testing.T) {
 				t.Fatalf("function decls = %d want %d", gotFuncs, tc.wantFuncs)
 			}
 
-			// Wire check: google_search must serialize as an empty object, and
+			// Wire check: googleSearch must serialize as an empty object, and
 			// an absent one must not emit a null field.
 			raw, err := json.Marshal(out)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.wantSearch && !strings.Contains(string(raw), `"google_search":{}`) {
-				t.Fatalf("google_search not serialized: %s", raw)
+			if tc.wantSearch && !strings.Contains(string(raw), `"googleSearch":{}`) {
+				t.Fatalf("googleSearch not serialized: %s", raw)
 			}
-			if !tc.wantSearch && strings.Contains(string(raw), "google_search") {
-				t.Fatalf("google_search leaked when unasked: %s", raw)
+			if !tc.wantSearch && (strings.Contains(string(raw), "googleSearch") || strings.Contains(string(raw), "google_search")) {
+				t.Fatalf("googleSearch leaked when unasked: %s", raw)
 			}
 		})
+	}
+}
+
+func TestNativeWebSearchWithFunctionsDropsSearch(t *testing.T) {
+	req := OpenAIRequest{
+		Model:    "gemini-3.1-pro",
+		Messages: []OpenAIMessage{{Role: "user", Content: "hi"}},
+		Tools:    []OpenAITool{fnTool("read"), {Type: "web_search"}},
+	}
+	out, err := FromOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotSearch, gotFuncs int
+	for _, g := range out.Tools {
+		if g.GoogleSearch != nil {
+			gotSearch++
+		}
+		gotFuncs += len(g.FunctionDeclarations)
+	}
+	if gotSearch != 0 || gotFuncs != 1 {
+		t.Fatalf("search=%d funcs=%d want search=0 funcs=1 tools=%+v", gotSearch, gotFuncs, out.Tools)
 	}
 }

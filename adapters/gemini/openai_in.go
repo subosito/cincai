@@ -136,11 +136,18 @@ func FromOpenAI(req OpenAIRequest) (GenerateRequest, error) {
 			Parts: []ContentPart{{Text: strings.Join(system, "\n\n")}},
 		}
 	}
-	if decls := toolDeclarations(req.Tools); len(decls) > 0 {
+	decls := toolDeclarations(req.Tools)
+	wantSearch := hasNativeWebSearch(req.Tools)
+	if len(decls) > 0 {
 		out.Tools = append(out.Tools, ToolGroup{FunctionDeclarations: decls})
 	}
-	if hasNativeWebSearch(req.Tools) {
-		out.Tools = append(out.Tools, ToolGroup{GoogleSearch: &struct{}{}})
+	// Mixing googleSearch with functionDeclarations requires
+	// toolConfig.includeServerSideToolInvocations. Gemini API accepts it;
+	// Vertex rejects it as unknown; Cloud Code strips it then 400s. Prefer
+	// client function tools when both are requested so agent loops work on
+	// every host; search-only still gets googleSearch.
+	if wantSearch && len(decls) == 0 {
+		out.Tools = append(out.Tools, ToolGroup{GoogleSearch: &GoogleSearch{}})
 	}
 	if len(out.Contents) == 0 {
 		return GenerateRequest{}, fmt.Errorf("gemini: no messages")
