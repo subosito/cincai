@@ -19,15 +19,16 @@ func encodeAnthropicJSON(events []messages.StreamEvent, model string) ([]byte, e
 
 func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[string]any, error) {
 	var (
-		msgID      string
-		msgModel   string
-		blocks     []map[string]any
-		textBuf    strings.Builder
-		inputTok   int
-		outTok     int
-		cacheRead  int
-		cacheWrite int
-		stop       = "end_turn"
+		msgID           string
+		msgModel        string
+		blocks          []map[string]any
+		textBuf         strings.Builder
+		inputTok        int
+		outTok          int
+		cacheRead       int
+		cacheWrite      int
+		serverToolCalls int
+		stop            = "end_turn"
 	)
 	flushText := func() {
 		if textBuf.Len() == 0 {
@@ -80,6 +81,9 @@ func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[str
 			if ev.CacheWriteTokens > 0 {
 				cacheWrite = ev.CacheWriteTokens
 			}
+			if ev.ServerToolCalls > 0 {
+				serverToolCalls = ev.ServerToolCalls
+			}
 		}
 	}
 	flushText()
@@ -97,6 +101,12 @@ func buildAnthropicMessage(events []messages.StreamEvent, model string) (map[str
 	}
 	if cacheRead > 0 {
 		usage["cache_read_input_tokens"] = cacheRead
+	}
+	// Carried for the OpenAI encoder, which republishes it as
+	// num_server_side_tool_calls; Anthropic's own field is server_tool_use.
+	if serverToolCalls > 0 {
+		usage["server_tool_calls"] = serverToolCalls
+		usage["server_tool_use"] = map[string]any{"web_search_requests": serverToolCalls}
 	}
 	if cacheWrite > 0 {
 		usage["cache_creation_input_tokens"] = cacheWrite

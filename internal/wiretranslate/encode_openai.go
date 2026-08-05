@@ -52,6 +52,13 @@ func encodeOpenAIJSON(events []messages.StreamEvent, model string) ([]byte, erro
 	if cacheRead > 0 {
 		oaUsage["prompt_tokens_details"] = map[string]any{"cached_tokens": cacheRead}
 	}
+	// Provider-executed tool calls have no home in the OpenAI usage schema, so
+	// publish them under the same name the Responses wire uses. Without this a
+	// client on chat-completions cannot tell that the provider searched — and
+	// billed — on its behalf.
+	if n := anyToInt(usage["server_tool_calls"]); n > 0 {
+		oaUsage["num_server_side_tool_calls"] = n
+	}
 	resp := map[string]any{
 		"id":      msg["id"],
 		"object":  "chat.completion",

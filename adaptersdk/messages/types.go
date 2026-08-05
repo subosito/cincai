@@ -49,6 +49,11 @@ type StreamEvent struct {
 	OutputTokens     int
 	CacheReadTokens  int
 	CacheWriteTokens int
+	// ServerToolCalls counts tools the provider executed itself (web search
+	// and friends). Some wires have no server-tool channel at all, so an
+	// adapter that can see the work — e.g. Gemini grounding metadata — is the
+	// only place it can be counted before the client loses sight of it.
+	ServerToolCalls int
 
 	MessageID string
 	Model     string
