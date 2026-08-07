@@ -102,6 +102,17 @@ models:
   #         - gpt-5.6-luna
   #         - gemini-3.6-flash
 
+# Model groups (optional). Discovery only — not request model ids.
+# GET /v1/models includes { "id": "reviewers", "object": "model_group", "models": […] }.
+# groups:
+#   reviewers:
+#     description: Code / PR review
+#     models:
+#       - glm-5.2
+#       - gpt-5.6-sol
+#       - qwen3.8-max
+#       - claude-opus-5
+
   # --- image / video ------------------------------------------------------
   grok-imagine-image-quality:
     modalities:

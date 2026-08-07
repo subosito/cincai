@@ -54,7 +54,7 @@ func TestStashHostAttribution_ignoresUnknown(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	req.Header.Set("X-Chacha-Actor", "legacy-must-ignore")
+	req.Header.Set("X-Legacy-Actor", "legacy-must-ignore")
 	req.Header.Set("X-Bot-Slug", "should-ignore")
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if got.Actor != "" || got.Session != "" || got.Component != "" {

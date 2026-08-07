@@ -74,6 +74,6 @@ func RemoteLoginNotes(profile string) string {
 		fmt.Fprintf(&b, "Loopback on the machine running login. If login runs on a remote host, forward first:\n")
 		fmt.Fprintf(&b, "  ssh -L %d:127.0.0.1:%d user@YOUR_HOST\n", spec.Port, spec.Port)
 	}
-	fmt.Fprintf(&b, "Alternative without port-forward: chacha credential login %s --flow manual\n", profile)
+	fmt.Fprintf(&b, "Alternative without port-forward: cincai credential login %s --flow manual\n", profile)
 	return b.String()
 }

@@ -12,7 +12,7 @@ type RequestLog struct {
 	Wire          string `json:"wire"`
 	Model         string `json:"model"`
 	// Alias is the composite catalog id when the client requested a models-chain
-	// id (e.g. goalie). Model is then the hop that served (gpt-5.6-luna).
+	// id (e.g. agent-cheap). Model is then the hop that served (gpt-5.6-luna).
 	// Empty for leaf models.
 	Alias         string `json:"alias,omitempty"`
 	ProviderRef   string `json:"provider_ref,omitempty"`

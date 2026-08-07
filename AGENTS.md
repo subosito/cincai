@@ -76,6 +76,11 @@ hop that served, **`alias`** = composite request id. Public surface: `catalog`
 (`Modality.Models`, `RoutePlan.Models`, `ModelListItem.Models`) and
 `observability` (`RequestLog.Alias`, `UsageEvent.Alias`) — not under `internal/`.
 
+**Model groups:** root **`groups:`** — named member lists for UI discovery
+(`object: "model_group"` on `GET /v1/models`). Not callable. Public:
+`catalog.ModelGroup`, `ObjectModelGroup`, `IsModelGroup`. Leaves may advertise
+`groups: ["reviewers"]`.
+
 See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 
 ## Layout and the public/internal split
@@ -103,7 +108,7 @@ See `config/providers.yaml.example` and [docs/routing.md](docs/routing.md).
 - Add a test for non-trivial logic; follow the nearest table-driven example rather than
   inventing a harness.
 - Open-source docs and `*.example` configs stay **vendor-neutral** (example-model,
-  api.example.com). Host-specific catalogs live in product repos (e.g. chacha), not here.
+  api.example.com). Host-specific catalogs live in product repos, not here.
 
 ## Security invariants (don't regress these)
 

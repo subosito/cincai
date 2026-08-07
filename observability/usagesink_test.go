@@ -50,7 +50,7 @@ func TestRecordIngress_includesHostAttribution(t *testing.T) {
 	})
 	RecordIngress(ctx, &Recorder{
 		Wire: "anthropic-messages", Model: "claude-sonnet-5", ProviderRef: "anthropic",
-		PrincipalID: "dududu", Usage: Usage{InputTokens: 2, OutputTokens: 153},
+		PrincipalID: "host-app", Usage: Usage{InputTokens: 2, OutputTokens: 153},
 	}, 200, time.Now())
 
 	out := buf.String()
@@ -60,7 +60,7 @@ func TestRecordIngress_includesHostAttribution(t *testing.T) {
 		`"session":"sess-1"`,
 		`"component":"turn.chat"`,
 		`"correlation_id":"corr-1"`,
-		`"principal_id":"dududu"`,
+		`"principal_id":"host-app"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %s in ingress log: %s", want, out)

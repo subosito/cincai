@@ -44,6 +44,46 @@ models:
 Wire translation still applies underneath: hit `/v1/chat/completions` or
 `/v1/messages`, and Cincai translates when a provider's protocol differs.
 
+## Model groups (`groups:` root)
+
+A **group** is a named set of public model ids for **client discovery** (menus,
+pickers, “reviewer models”). The gateway does **not** route to a group id.
+
+```yaml
+groups:
+  reviewers:
+    description: Code / PR review
+    models:
+      - glm-5.2
+      - gpt-5.6-luna
+      - qwen3.8-max
+
+models:
+  glm-5.2: { … }
+  # …
+```
+
+| Rule | Detail |
+|------|--------|
+| **Not callable** | `POST … {"model":"reviewers"}` → **400** (`model_group`, pick a member) |
+| **Members** | Each entry must exist under `models:` (leaf or composite) |
+| **No id collision** | Group id must not equal a model id |
+| **GET /v1/models** | Group appears with `"object":"model_group"` and `"models":[…]` |
+| **Leaf back-ref** | Member models may list `"groups":["reviewers"]` |
+
+```json
+{
+  "id": "reviewers",
+  "object": "model_group",
+  "owned_by": "cincai",
+  "description": "Code / PR review",
+  "models": ["glm-5.2", "gpt-5.6-luna", "qwen3.8-max"]
+}
+```
+
+Clients that only want callables: filter `object === "model"`.  
+Order in `groups.*.models` is UI order, not failover (use composite `modality.models` for that).
+
 ## Composite models (`models:` hops)
 
 Some public ids are **composites**: they do not pin a provider; they name an
@@ -91,8 +131,9 @@ Rules:
 | **GET /v1/models** | Composite ids appear as normal models with `"models": ["gpt-5.6-luna", "gemini-3.6-flash"]`. Leaf models omit the field. |
 
 Observability: ingress **`model`** is the **hop that served** (real catalog id);
-**`alias`** is the composite id from the request (e.g. `goalie`). Leaf requests
-omit `alias`. Response body `model` is whatever the successful upstream returned.
+**`alias`** is the composite id from the request (e.g. `agent-cheap`). Leaf
+requests omit `alias`. Response body `model` is whatever the successful upstream
+returned.
 
 **Quality note:** hopping luna → gemini is intentional degradation, not a silent
 retry of the “same” model. Name composites for policy (`agent-cheap`), not as

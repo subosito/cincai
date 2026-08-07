@@ -3,8 +3,8 @@
 // gateway engine — everything a self-hoster gets from `cincai serve`. For lower-
 // level control, use the gateway package directly.
 //
-// Product binaries (chacha) and hosts (dududu-router) depend on this module via
-// go.mod — they do not fork the engine sources.
+// Product binaries and host apps depend on this module via go.mod — they do not
+// fork the engine sources.
 package cincai
 
 import (

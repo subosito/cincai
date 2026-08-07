@@ -12,7 +12,7 @@ func Boot(serviceName string) {
 	BootWithPrefix(serviceName, DefaultMetricPrefix)
 }
 
-// BootWithPrefix is like Boot but sets the metric name prefix (e.g. "chacha").
+// BootWithPrefix is like Boot but sets the metric name prefix (e.g. "myapp").
 func BootWithPrefix(serviceName, metricPrefix string) {
 	if _, err := InitWithPrefix(serviceName, metricPrefix); err != nil {
 		slog.Error("observability: init failed", "service", serviceName, "err", err)
