@@ -227,6 +227,86 @@ func rewriteModelBody(raw []byte, upstreamModel string) []byte {
 	return out
 }
 
+// rewriteMultipartModel rewrites the form field name="model" for STT (and
+// other multipart ingress). JSON rewrite cannot touch multipart bodies, so
+// without this OpenRouter/Groq would receive the catalog id instead of the
+// upstream model slug.
+//
+// Returns rebuilt body + new Content-Type (boundary may change).
+func rewriteMultipartModel(raw []byte, contentType, upstreamModel string) (body []byte, newCT string, ok bool) {
+	if upstreamModel == "" || !strings.HasPrefix(contentType, "multipart/") {
+		return nil, "", false
+	}
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, "", false
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, "", false
+	}
+	r := multipart.NewReader(bytes.NewReader(raw), boundary)
+	var out bytes.Buffer
+	w := multipart.NewWriter(&out)
+	rewrote := false
+	for {
+		part, err := r.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", false
+		}
+		data, err := io.ReadAll(part)
+		_ = part.Close()
+		if err != nil {
+			return nil, "", false
+		}
+		name := part.FormName()
+		if name == "model" {
+			if err := w.WriteField("model", upstreamModel); err != nil {
+				return nil, "", false
+			}
+			rewrote = true
+			continue
+		}
+		// Preserve file parts (filename + content-type) and other fields.
+		if fn := part.FileName(); fn != "" || name == "file" {
+			hdr := make(map[string][]string)
+			if name == "" {
+				name = "file"
+			}
+			cd := fmt.Sprintf(`form-data; name="%s"; filename="%s"`, name, fn)
+			hdr["Content-Disposition"] = []string{cd}
+			if ct := part.Header.Get("Content-Type"); ct != "" {
+				hdr["Content-Type"] = []string{ct}
+			}
+			pw, err := w.CreatePart(hdr)
+			if err != nil {
+				return nil, "", false
+			}
+			if _, err := pw.Write(data); err != nil {
+				return nil, "", false
+			}
+			continue
+		}
+		if name == "" {
+			continue
+		}
+		if err := w.WriteField(name, string(data)); err != nil {
+			return nil, "", false
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", false
+	}
+	if !rewrote {
+		// No model field — leave original body/CT alone.
+		return nil, "", false
+	}
+	return out.Bytes(), w.FormDataContentType(), true
+}
+
 func readLimitedBody(body io.Reader, max int64) ([]byte, error) {
 	raw, err := io.ReadAll(io.LimitReader(body, max+1))
 	if err != nil {
@@ -259,9 +339,29 @@ func recordTarget(rec *observability.Recorder, target catalog.Target) {
 	}
 }
 
-func (e *Engine) requestBody(raw []byte, upstreamModel string, r *http.Request) io.ReadCloser {
+// requestBody rewrites the upstream model id into JSON or multipart bodies.
+// When multipart is rebuilt the boundary changes — both r.Header and hdr (the
+// cloned headers used for the upstream call) must get the new Content-Type.
+func (e *Engine) requestBody(raw []byte, upstreamModel string, r *http.Request, hdr http.Header) io.ReadCloser {
 	if raw == nil {
 		return nil
+	}
+	ct := ""
+	if r != nil {
+		ct = r.Header.Get("Content-Type")
+	}
+	if ct == "" && hdr != nil {
+		ct = hdr.Get("Content-Type")
+	}
+	if out, newCT, ok := rewriteMultipartModel(raw, ct, upstreamModel); ok {
+		if r != nil {
+			r.Header.Set("Content-Type", newCT)
+		}
+		if hdr != nil {
+			hdr.Set("Content-Type", newCT)
+		}
+		refreshContentLength(r, len(out))
+		return io.NopCloser(bytes.NewReader(out))
 	}
 	rewritten := rewriteModelBody(raw, upstreamModel)
 	refreshContentLength(r, len(rewritten))
@@ -279,7 +379,7 @@ type forceRefresher interface {
 // OAuth credential once and retries, covering an access token that expired
 // between the proactive refresh check and the upstream call.
 func (e *Engine) forwardTarget(ctx context.Context, wireID, ingressPath string, target catalog.Target, mat store.Material, raw []byte, r *http.Request, hdr http.Header) (*http.Response, error) {
-	resp, err := e.forward(ctx, wireID, ingressPath, toHandlerTarget(target, mat), e.requestBody(raw, target.UpstreamModel, r), hdr)
+	resp, err := e.forward(ctx, wireID, ingressPath, toHandlerTarget(target, mat), e.requestBody(raw, target.UpstreamModel, r, hdr), hdr)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +395,7 @@ func (e *Engine) forwardTarget(ctx context.Context, wireID, ingressPath string, 
 		return resp, nil // no fresh token to retry with — keep the 401
 	}
 	resp.Body.Close()
-	return e.forward(ctx, wireID, ingressPath, toHandlerTarget(target, newMat), e.requestBody(raw, target.UpstreamModel, r), hdr)
+	return e.forward(ctx, wireID, ingressPath, toHandlerTarget(target, newMat), e.requestBody(raw, target.UpstreamModel, r, hdr), hdr)
 }
 
 func (e *Engine) forward(ctx context.Context, wireID, ingressPath string, ht handler.Target, body io.ReadCloser, hdr http.Header) (*http.Response, error) {

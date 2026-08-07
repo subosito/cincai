@@ -3,6 +3,7 @@ package wire_test
 import (
 	"bytes"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -130,11 +131,25 @@ models:
 }
 
 func TestTranscriptionForward(t *testing.T) {
-	var gotPath string
-	var gotCT string
+	var gotPath, gotCT, gotModel string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotCT = r.Header.Get("Content-Type")
+		if strings.HasPrefix(gotCT, "multipart/") {
+			_, params, _ := mime.ParseMediaType(gotCT)
+			mr := multipart.NewReader(r.Body, params["boundary"])
+			for {
+				part, err := mr.NextPart()
+				if err != nil {
+					break
+				}
+				if part.FormName() == "model" {
+					b, _ := io.ReadAll(part)
+					gotModel = string(b)
+				}
+				_ = part.Close()
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"text":"hello du"}`)
 	}))
@@ -184,6 +199,9 @@ models:
 	}
 	if !strings.HasPrefix(gotCT, "multipart/") {
 		t.Fatalf("content-type=%q", gotCT)
+	}
+	if gotModel != "whisper-large-v3-turbo" {
+		t.Fatalf("upstream model field=%q want whisper-large-v3-turbo", gotModel)
 	}
 }
 
