@@ -31,9 +31,10 @@ type openAIImageGenerateReq struct {
 }
 
 type openAIImageEditReq struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Image  string `json:"image"`
+	Model  string          `json:"model"`
+	Prompt string          `json:"prompt"`
+	Image  json.RawMessage `json:"image"`  // string b64 or object {url,type}
+	Images json.RawMessage `json:"images"` // []string b64 or []object
 }
 
 func (h *ImageHandler) Forward(ctx context.Context, client *http.Client, t handler.Target, ingressPath string, body io.Reader, hdr http.Header) (*http.Response, error) {
@@ -117,9 +118,17 @@ func buildXAIEditBody(raw []byte, model string) ([]byte, error) {
 	if prompt == "" {
 		return nil, fmt.Errorf("xai-images: prompt is required")
 	}
-	image := strings.TrimSpace(req.Image)
-	if image == "" {
+	urls, err := collectXAIEditImageURLs(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(urls) == 0 {
 		return nil, fmt.Errorf("xai-images: image is required")
+	}
+	// API: single image object, or multi-image (up to 3) as images[].
+	// https://docs.x.ai/developers/model-capabilities/images/multi-image-editing
+	if len(urls) > 3 {
+		return nil, fmt.Errorf("xai-images: at most 3 source images (got %d)", len(urls))
 	}
 	body := map[string]any{
 		"model":           model,
@@ -127,12 +136,67 @@ func buildXAIEditBody(raw []byte, model string) ([]byte, error) {
 		"resolution":      "2k",
 		"n":               1,
 		"response_format": "b64_json",
-		"image": map[string]any{
-			"type": "image_url",
-			"url":  imageDataURL(image),
-		},
+	}
+	if len(urls) == 1 {
+		body["image"] = map[string]any{"type": "image_url", "url": urls[0]}
+	} else {
+		arr := make([]map[string]any, 0, len(urls))
+		for _, u := range urls {
+			arr = append(arr, map[string]any{"type": "image_url", "url": u})
+		}
+		body["images"] = arr
 	}
 	return json.Marshal(body)
+}
+
+// collectXAIEditImageURLs normalizes OpenAI-compat image / images fields into data-URLs or http URLs.
+func collectXAIEditImageURLs(req openAIImageEditReq) ([]string, error) {
+	var out []string
+	appendOne := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return
+		}
+		out = append(out, imageDataURL(raw))
+	}
+	// images[] preferred for multi (dududu PostRouterImage multi-edit).
+	if len(req.Images) > 0 {
+		var asStrings []string
+		if err := json.Unmarshal(req.Images, &asStrings); err == nil {
+			for _, s := range asStrings {
+				appendOne(s)
+			}
+		} else {
+			var asObjs []map[string]any
+			if err := json.Unmarshal(req.Images, &asObjs); err == nil {
+				for _, o := range asObjs {
+					if u, _ := o["url"].(string); strings.TrimSpace(u) != "" {
+						appendOne(u)
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("xai-images: invalid images field")
+			}
+		}
+	}
+	if len(out) == 0 && len(req.Image) > 0 {
+		// string b64
+		var s string
+		if err := json.Unmarshal(req.Image, &s); err == nil {
+			appendOne(s)
+		} else {
+			var o map[string]any
+			if err := json.Unmarshal(req.Image, &o); err == nil {
+				if u, _ := o["url"].(string); strings.TrimSpace(u) != "" {
+					appendOne(u)
+				}
+			} else {
+				// bare non-JSON string in RawMessage edge case
+				appendOne(string(req.Image))
+			}
+		}
+	}
+	return out, nil
 }
 
 func imageDataURL(raw string) string {
