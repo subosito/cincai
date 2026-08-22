@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -86,7 +87,9 @@ func openGateway(opts ServeOptions) (*Gateway, error) {
 	}
 	if metaPath := strings.TrimSpace(cfgFile.Serve.ModelMeta); metaPath != "" {
 		if err := cat.MergeMetaFile(metaPath); err != nil {
-			return nil, fmt.Errorf("model meta: %w", err)
+			// Metadata only enriches context/pricing/effort discovery. A stale or
+			// malformed optional file must not take the routing data plane down.
+			slog.Warn("model meta ignored", "path", metaPath, "err", err)
 		}
 	}
 	st, ks, err := OpenStore(cfgFile)
