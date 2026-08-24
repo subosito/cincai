@@ -32,9 +32,10 @@ const (
 
 // Surface is one upstream endpoint on a provider (passthrough protocol or translate adapter).
 type Surface struct {
-	Protocol string `yaml:"protocol,omitempty"`
-	Adapter  string `yaml:"adapter,omitempty"`
-	BaseURL  string `yaml:"base_url"`
+	Protocol      string `yaml:"protocol,omitempty"`
+	Adapter       string `yaml:"adapter,omitempty"`
+	BaseURL       string `yaml:"base_url"`
+	RequestPreset string `yaml:"request_preset,omitempty"`
 }
 
 // Provider is a logical vendor connection.
@@ -43,9 +44,9 @@ type Provider struct {
 	// Proxy is an optional HTTP(S) proxy URL for all upstream calls on this
 	// provider (e.g. "http://127.0.0.1:8080"). Empty = use process default
 	// (ProxyFromEnvironment). "direct" forces no proxy even if env is set.
-	Proxy        string            `yaml:"proxy,omitempty"`
-	Inject       map[string]string `yaml:"inject,omitempty"`
-	InjectPreset string            `yaml:"inject_preset,omitempty"`
+	Proxy        string             `yaml:"proxy,omitempty"`
+	Inject       map[string]string  `yaml:"inject,omitempty"`
+	InjectPreset string             `yaml:"inject_preset,omitempty"`
 	Surfaces     map[string]Surface `yaml:"surfaces"`
 }
 
@@ -56,6 +57,10 @@ type PoolEntry struct {
 	Surface     string `yaml:"surface,omitempty"`
 	// Adapter overrides the provider surface handler (e.g. dashscope-omni on surface: video).
 	Adapter string `yaml:"adapter,omitempty"`
+	// Models is an effort → SKU map for this hop (cursor: high → kimi-k3-high).
+	// Authoring may be a map or a list of {model, effort}; load normalizes to a map.
+	// Mutually exclusive with Model. Default SKU is models[default_effort].
+	Models map[string]string `yaml:"models,omitempty"`
 }
 
 // Modality binds wire + pool.
@@ -79,9 +84,9 @@ type Model struct {
 	// Efforts lists allowed reasoning-effort levels (e.g. low, medium, high).
 	// Empty means the model does not advertise effort controls. Clients should
 	// use this list when present instead of a static none|low|medium|high set.
-	// When set, request effort rewrites UpstreamModel by replacing a pool-model
-	// tier suffix (example-model-medium + high → example-model-high), or
-	// {id}-{effort} when the pool model equals the public id.
+	// Per-hop SKUs are selected via PoolEntry.Effort (model + effort on the hop).
+	// Untagged hops may still rewrite a pool-model tier suffix
+	// (example-model-medium + high → example-model-high).
 	Efforts []string `yaml:"efforts,omitempty"`
 	// DefaultEffort is applied when the client omits effort. Must be in Efforts.
 	DefaultEffort string `yaml:"default_effort,omitempty"`
@@ -194,10 +199,13 @@ type Target struct {
 	BaseURL           string
 	CredentialProfile string
 	UpstreamModel     string
+	// EffortModels is copied from the pool hop (effort → SKU). Empty = body-only / suffix.
+	EffortModels map[string]string
 	// Proxy is the provider-level HTTP(S) proxy URL (see Provider.Proxy).
-	Proxy        string
-	Inject       map[string]string
-	InjectPreset string
+	Proxy         string
+	Inject        map[string]string
+	InjectPreset  string
+	RequestPreset string
 }
 
 // RoutePlan is the ordered upstream attempt list for one model + wire.
@@ -370,6 +378,22 @@ func (c *Catalog) targetFromEntry(model string, entry PoolEntry, wire string) (T
 		return Target{}, err
 	}
 	upstreamModel := strings.TrimSpace(entry.Model)
+	if len(entry.Models) > 0 {
+		// models owns the SKU. Default is models[default_effort], else first efforts key.
+		if m, ok := c.doc.Models[model]; ok {
+			if sku, ok := lookupHopEffortModel(entry.Models, resolvedDefaultEffort(m)); ok {
+				upstreamModel = sku
+			}
+		}
+		if upstreamModel == "" {
+			for _, sku := range entry.Models {
+				if s := strings.TrimSpace(sku); s != "" {
+					upstreamModel = s
+					break
+				}
+			}
+		}
+	}
 	if upstreamModel == "" {
 		upstreamModel = strings.TrimSpace(model)
 	}
@@ -382,9 +406,11 @@ func (c *Catalog) targetFromEntry(model string, entry PoolEntry, wire string) (T
 		Protocol: surf.Protocol, Adapter: adapter, BaseURL: surf.BaseURL,
 		CredentialProfile: prov.CredentialProfile,
 		UpstreamModel:     upstreamModel,
+		EffortModels:      entry.Models,
 		Proxy:             strings.TrimSpace(prov.Proxy),
 		Inject:            prov.Inject,
 		InjectPreset:      prov.InjectPreset,
+		RequestPreset:     surf.RequestPreset,
 	}, nil
 }
 
