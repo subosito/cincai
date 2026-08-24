@@ -49,9 +49,10 @@ func applyWireTranslate(doc *corecatalog.Document) {
 						prov.Surfaces = make(map[string]corecatalog.Surface)
 					}
 					prov.Surfaces[injKey] = corecatalog.Surface{
-						Adapter:  adapter,
-						Protocol: s.Protocol,
-						BaseURL:  s.BaseURL,
+						Adapter:       adapter,
+						Protocol:      s.Protocol,
+						BaseURL:       s.BaseURL,
+						RequestPreset: s.RequestPreset,
 					}
 					doc.Providers[entry.ProviderRef] = prov
 				}

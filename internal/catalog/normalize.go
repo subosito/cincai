@@ -98,6 +98,9 @@ func normalizeCapabilitiesProvider(entry map[string]any) (map[string]any, bool) 
 		if protocol := aliasProtocol(fields.String(capEntry["protocol"])); protocol != "" {
 			surf["protocol"] = protocol
 		}
+		if preset := fields.String(capEntry["request_preset"]); preset != "" {
+			surf["request_preset"] = preset
+		}
 		if base := fields.FirstNonEmpty(fields.String(capEntry["base_url"]), fields.String(capEntry["url"])); base != "" {
 			surf["base_url"] = base
 		}
@@ -225,22 +228,26 @@ func normalizeModalityRoute(route map[string]any, yamlKey, modality string) map[
 		out["wire"] = w
 	}
 	// Composite model: ordered public model ids (xor with providers).
+	// A map here, or a list of {model, effort} objects, is per-hop SKUs
+	// (cursor: high → kimi-k3-high), not a composite hop list.
 	if hops, ok := route["models"].([]any); ok && len(hops) > 0 {
-		outHops := make([]any, 0, len(hops))
-		for _, item := range hops {
-			switch v := item.(type) {
-			case string:
-				if s := strings.TrimSpace(v); s != "" {
-					outHops = append(outHops, s)
-				}
-			default:
-				if s := fields.String(v); s != "" {
-					outHops = append(outHops, s)
+		if skus := hopEffortModels(hops); len(skus) == 0 {
+			outHops := make([]any, 0, len(hops))
+			for _, item := range hops {
+				switch v := item.(type) {
+				case string:
+					if s := strings.TrimSpace(v); s != "" {
+						outHops = append(outHops, s)
+					}
+				default:
+					if s := fields.String(v); s != "" {
+						outHops = append(outHops, s)
+					}
 				}
 			}
+			out["models"] = outHops
+			return out
 		}
-		out["models"] = outHops
-		return out
 	}
 	if ref := fields.String(route["provider_ref"]); ref != "" {
 		entry := map[string]any{"provider_ref": ref}
@@ -254,6 +261,9 @@ func normalizeModalityRoute(route map[string]any, yamlKey, modality string) map[
 		}
 		if adapter := fields.String(route["adapter"]); adapter != "" {
 			entry["adapter"] = adapter
+		}
+		if skus := hopEffortModels(route["models"]); len(skus) > 0 {
+			entry["models"] = skus
 		}
 		out["providers"] = []any{normalizePoolEntry(entry)}
 		return out
@@ -292,10 +302,56 @@ func normalizePoolEntry(item any) map[string]any {
 		if adapter := fields.String(v["adapter"]); adapter != "" {
 			out["adapter"] = adapter
 		}
+		if skus := hopEffortModels(v["models"]); len(skus) > 0 {
+			out["models"] = skus
+		}
 		return out
 	default:
 		return map[string]any{}
 	}
+}
+
+func hopEffortModels(raw any) map[string]any {
+	out := map[string]any{}
+	switch m := raw.(type) {
+	case []any:
+		for _, item := range m {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				return nil
+			}
+			effort := strings.ToLower(strings.TrimSpace(fields.String(entry["effort"])))
+			sku := strings.TrimSpace(fields.String(entry["model"]))
+			if effort == "" || sku == "" {
+				return nil
+			}
+			out[effort] = sku
+		}
+	case map[string]any:
+		for k, v := range m {
+			key := strings.ToLower(strings.TrimSpace(k))
+			sku := strings.TrimSpace(fields.String(v))
+			if key == "" || sku == "" {
+				continue
+			}
+			out[key] = sku
+		}
+	case map[string]string:
+		for k, v := range m {
+			key := strings.ToLower(strings.TrimSpace(k))
+			sku := strings.TrimSpace(v)
+			if key == "" || sku == "" {
+				continue
+			}
+			out[key] = sku
+		}
+	default:
+		return nil
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeWire(wire, _ string) string {
