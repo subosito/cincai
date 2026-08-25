@@ -92,6 +92,33 @@ func translateOpenAIStreamToResponses(r io.Reader, model string) (*http.Response
 	return sseResponse(pr), nil
 }
 
+// translateAnthropicStreamToResponses pipes Anthropic SSE → Responses SSE
+// incrementally. Takes ownership of r (closes it if io.Closer when the pipe
+// finishes).
+func translateAnthropicStreamToResponses(r io.Reader, model string) (*http.Response, error) {
+	pr, pw := io.Pipe()
+	enc := newResponsesStreamEncoder(pw, model)
+	go func() {
+		var err error
+		defer closeUpstream(r)
+		defer func() {
+			if err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+			if closeErr := enc.Close(); closeErr != nil {
+				_ = pw.CloseWithError(closeErr)
+				return
+			}
+			_ = pw.Close()
+		}()
+		err = parseAnthropicStream(r, func(ev messages.StreamEvent) error {
+			return enc.WriteEvent(ev)
+		})
+	}()
+	return sseResponse(pr), nil
+}
+
 func closeUpstream(r io.Reader) {
 	if c, ok := r.(io.Closer); ok {
 		_ = c.Close()

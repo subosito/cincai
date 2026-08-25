@@ -29,6 +29,7 @@ func (a *Adapter) Register(reg *adaptersdk.Registry) error {
 	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateA2O, &Handler{Name: cincaicatalog.AdapterWireTranslateA2O})
 	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateO2A, &Handler{Name: cincaicatalog.AdapterWireTranslateO2A})
 	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateR2O, &Handler{Name: cincaicatalog.AdapterWireTranslateR2O})
+	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateR2A, &Handler{Name: cincaicatalog.AdapterWireTranslateR2A})
 	return nil
 }
 
@@ -51,6 +52,8 @@ func (h *Handler) Forward(ctx context.Context, client *http.Client, t handler.Ta
 		return forwardO2A(ctx, client, t, raw, hdr)
 	case cincaicatalog.AdapterWireTranslateR2O:
 		return forwardR2O(ctx, client, t, raw, hdr)
+	case cincaicatalog.AdapterWireTranslateR2A:
+		return forwardR2A(ctx, client, t, raw, hdr)
 	default:
 		return nil, fmt.Errorf("wire-translate: unknown handler %q", h.Name)
 	}
@@ -183,6 +186,50 @@ func forwardR2O(ctx context.Context, client *http.Client, t handler.Target, raw 
 		return nil, err
 	}
 	events, err := openAINonStreamToEvents(outRaw)
+	if err != nil {
+		return nil, err
+	}
+	body, err := encodeResponsesJSON(events, model)
+	if err != nil {
+		return nil, err
+	}
+	return jsonResponse(body), nil
+}
+
+func forwardR2A(ctx context.Context, client *http.Client, t handler.Target, raw []byte, hdr http.Header) (*http.Response, error) {
+	var ingress responsesRequest
+	if err := decodeJSON(raw, &ingress); err != nil {
+		return nil, err
+	}
+	if resp := responsesStatefulGuard(&ingress); resp != nil {
+		return resp, nil
+	}
+	upstreamBody, err := responsesToAnthropicRequest(raw, t.UpstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := relayPOST(ctx, client, t, "/v1/messages", bytes.NewReader(upstreamBody), hdr)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return passthroughError(resp)
+	}
+	model := strings.TrimSpace(ingress.Model)
+	if model == "" {
+		model = t.UpstreamModel
+	}
+	if ingress.Stream {
+		// Transfer resp.Body ownership to the stream pipe (do not Close here).
+		return translateAnthropicStreamToResponses(resp.Body, model)
+	}
+	defer resp.Body.Close()
+	outRaw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	events, err := anthropicNonStreamToEvents(outRaw)
 	if err != nil {
 		return nil, err
 	}
