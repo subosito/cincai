@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/subosito/cincai/adaptersdk"
 	"github.com/subosito/cincai/adaptersdk/handler"
@@ -332,6 +333,9 @@ func recordTarget(rec *observability.Recorder, target catalog.Target) {
 		return
 	}
 	rec.ProviderRef = target.ProviderRef
+	if target.UpstreamModel != "" && target.UpstreamModel != target.Model {
+		rec.Upstream = target.UpstreamModel
+	}
 	if target.Adapter != "" {
 		rec.Protocol = "adapter:" + target.Adapter
 	} else {
@@ -500,6 +504,30 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 	if isChatWire(wireID) && raw != nil {
 		effortHint = catalog.EffortFromBody(raw)
 	}
+	// Effort is applied to the full hop list first so effort-tagged SKUs
+	// (model + effort on the hop) survive non-failover pools. Composite
+	// models still apply per hop public id inside the loop.
+	if isChatWire(wireID) && raw != nil && !composite {
+		used, next, err := e.Catalog.ApplyEffort(model, effortHint, plan.Targets)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		plan.Targets = next
+		if used != "" {
+			if m, ok := e.Catalog.Model(model); ok {
+				if len(plan.Targets) > 0 && len(plan.Targets[0].EffortModels) > 0 {
+					raw = catalog.StripEffortHints(raw)
+				} else {
+					raw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
+					if err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+			}
+		}
+	}
 	failover := plan.Strategy == catalog.StrategyFailover || composite
 	ingressPath := r.URL.Path
 	ctx := r.Context()
@@ -515,10 +543,10 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 			// Real catalog hop (not the composite id) for usage / cost tracking.
 			rec.Model = hopID
 		}
-		if isChatWire(wireID) && raw != nil {
+		if isChatWire(wireID) && raw != nil && composite {
 			// Effort for the hop public id (target.Model), not the request alias.
 			tgs := []catalog.Target{target}
-			used, err := e.Catalog.ApplyEffort(hopID, effortHint, tgs)
+			used, next, err := e.Catalog.ApplyEffort(hopID, effortHint, tgs)
 			if err != nil {
 				// Unsupported effort on this hop — try next if composite/failover.
 				if failover && i < len(plan.Targets)-1 {
@@ -528,16 +556,27 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			target = tgs[0]
+			if len(next) == 0 {
+				if failover && i < len(plan.Targets)-1 {
+					continue
+				}
+				http.Error(w, "no upstream hop for requested effort", http.StatusBadRequest)
+				return
+			}
+			target = next[0]
 			if used != "" {
 				if m, ok := e.Catalog.Model(hopID); ok {
-					hopRaw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
-					if err != nil {
-						if failover && i < len(plan.Targets)-1 {
-							continue
+					if len(target.EffortModels) > 0 {
+						hopRaw = catalog.StripEffortHints(raw)
+					} else {
+						hopRaw, err = catalog.ExpandEffortBody(wireID, raw, used, m)
+						if err != nil {
+							if failover && i < len(plan.Targets)-1 {
+								continue
+							}
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
 						}
-						http.Error(w, err.Error(), http.StatusBadRequest)
-						return
 					}
 				}
 			}
@@ -574,6 +613,38 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 				slog.InfoContext(ctx, "models chain hop fail", "requested", model, "hop", target.Model, "status", resp.StatusCode, "next", true)
 			}
 			continue
+		}
+		// Same-hop 429 backoff (single-hop pools). A 429 means the request
+		// was rejected before execution — retrying the same hop does not
+		// double-execute or double-bill. When there is no next hop to fail
+		// over to, honoring Retry-After (or a short default) and retrying
+		// the same hop once absorbs TPM/RPM spikes instead of relaying a
+		// terminal 429 to the client. Bounded to one retry so a sustained
+		// limit still surfaces; the wait honors ctx cancel.
+		if resp.StatusCode == http.StatusTooManyRequests && i == len(plan.Targets)-1 {
+			wait := retryAfter(resp.Header)
+			resp.Body.Close()
+			if wait > maxSameHop429Backoff {
+				wait = maxSameHop429Backoff
+			}
+			slog.InfoContext(ctx, "same-hop 429 backoff", "requested", model, "hop", target.Model, "wait_ms", wait.Milliseconds())
+			select {
+			case <-ctx.Done():
+				http.Error(w, "upstream rate limited", http.StatusTooManyRequests)
+				return
+			case <-time.After(wait):
+			}
+			resp, err = e.forwardTarget(ctx, wireID, ingressPath, target, mat, hopRaw, r, outHdr)
+			if err != nil {
+				slog.ErrorContext(ctx, "same-hop 429 retry forward", "provider_ref", target.ProviderRef, "model", target.UpstreamModel, "err", err)
+				http.Error(w, "upstream error", http.StatusBadGateway)
+				return
+			}
+			// A second 429 after one backoff is a sustained limit:
+			// surface it to the client rather than looping.
+			if resp.StatusCode == http.StatusTooManyRequests {
+				break
+			}
 		}
 		// CopyResponse / CopyResponseWithUsage own and close resp.Body.
 		// Adapters must not Close a body they hand back for streaming; async
@@ -629,3 +700,40 @@ var (
 	errMethodNotAllowed   = errors.New("method not allowed")
 	errRouteNotRegistered = errors.New("route not registered")
 )
+
+// maxSameHop429Backoff caps the wait for a single-hop 429 Retry-After. An
+// upstream sending an absurd Retry-After (hours) must not hold a request
+// that long; the cap lets a short TPM window reset while bounding the worst
+// case. Set generously: the typical DashScope/Qwen token-plan window is well
+// under a minute.
+const maxSameHop429Backoff = 30 * time.Second
+
+// defaultSameHop429Backoff is used when the upstream sends no Retry-After.
+// A short fixed wait is enough to slip past a TPM spike on a single-hop
+// pool; no header means the upstream did not commit to a reset time, so we
+// do not wait long.
+const defaultSameHop429Backoff = 2 * time.Second
+
+// retryAfter parses the HTTP Retry-After header (seconds or HTTP-date).
+// Returns a default when absent or unparseable so a single-hop 429 still
+// gets one backoff attempt. Honors both forms per RFC 7231 §7.1.3.
+func retryAfter(h http.Header) time.Duration {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return defaultSameHop429Backoff
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			secs = 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			d = 0
+		}
+		return d
+	}
+	return defaultSameHop429Backoff
+}
