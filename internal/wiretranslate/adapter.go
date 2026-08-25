@@ -208,6 +208,14 @@ func forwardR2A(ctx context.Context, client *http.Client, t handler.Target, raw 
 	if err != nil {
 		return nil, err
 	}
+	// The Anthropic OAuth endpoint (request_preset: claude-code) requires a
+	// specific system preamble as the first block or it 404s. The
+	// anthropic-chat adapter in chacha does the same via
+	// ensureClaudeCodeSystemPreamble; the translator must match so a
+	// /v1/responses → r2a hop on claude-code preset doesn't 404.
+	if strings.EqualFold(strings.TrimSpace(t.RequestPreset), "claude-code") {
+		upstreamBody = ensureClaudeCodePreamble(upstreamBody)
+	}
 	resp, err := relayPOST(ctx, client, t, "/v1/messages", bytes.NewReader(upstreamBody), hdr)
 	if err != nil {
 		return nil, err

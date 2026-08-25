@@ -1,6 +1,7 @@
 package wiretranslate
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -364,4 +365,66 @@ func thinkingBudgetTokens(effort string) int {
 	default: // medium and unrecognized labels
 		return 2048
 	}
+}
+
+// claudeCodeSystemPreamble is the exact system block the Anthropic OAuth
+// (claude-code) endpoint requires as the first system block. Without it the
+// endpoint returns 404. Must match chacha's anthropic-chat adapter constant.
+const claudeCodeSystemPreamble = "You are Claude Code, Anthropic's official CLI for Claude."
+
+// ensureClaudeCodePreamble prepends the OAuth gate block to the system array
+// of an Anthropic request body. If the system is a plain string it converts
+// to block form first. If the preamble is already present (first block), the
+// body is returned unchanged.
+func ensureClaudeCodePreamble(raw []byte) []byte {
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return raw
+	}
+	block := map[string]any{"type": "text", "text": claudeCodeSystemPreamble}
+	systemRaw, ok := body["system"]
+	if !ok || len(bytes.TrimSpace(systemRaw)) == 0 || string(bytes.TrimSpace(systemRaw)) == "null" {
+		body["system"] = mustJSON([]any{block})
+		out, err := json.Marshal(body)
+		if err != nil {
+			return raw
+		}
+		return out
+	}
+	var existing []any
+	if err := json.Unmarshal(systemRaw, &existing); err == nil {
+		// Already has it as first block?
+		if len(existing) > 0 {
+			if m, ok := existing[0].(map[string]any); ok && strings.TrimSpace(fmt.Sprint(m["text"])) == claudeCodeSystemPreamble {
+				return raw
+			}
+		}
+		merged := append([]any{block}, existing...)
+		body["system"] = mustJSON(merged)
+		out, err := json.Marshal(body)
+		if err != nil {
+			return raw
+		}
+		return out
+	}
+	// system is a plain string — convert to block form with the preamble.
+	var text string
+	if err := json.Unmarshal(systemRaw, &text); err != nil {
+		return raw
+	}
+	blocks := []any{block}
+	if strings.TrimSpace(text) != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": text})
+	}
+	body["system"] = mustJSON(blocks)
+	out, err := json.Marshal(body)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+func mustJSON(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }
