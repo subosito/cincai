@@ -65,6 +65,33 @@ func translateOpenAIStreamToAnthropic(r io.Reader, model string) (*http.Response
 	return sseResponse(pr), nil
 }
 
+// translateOpenAIStreamToResponses pipes OpenAI chat SSE → Responses SSE
+// incrementally. Takes ownership of r (closes it if io.Closer when the pipe
+// finishes).
+func translateOpenAIStreamToResponses(r io.Reader, model string) (*http.Response, error) {
+	pr, pw := io.Pipe()
+	enc := newResponsesStreamEncoder(pw, model)
+	go func() {
+		var err error
+		defer closeUpstream(r)
+		defer func() {
+			if err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+			if closeErr := enc.Close(); closeErr != nil {
+				_ = pw.CloseWithError(closeErr)
+				return
+			}
+			_ = pw.Close()
+		}()
+		err = parseOpenAIStream(r, func(ev messages.StreamEvent) error {
+			return enc.WriteEvent(ev)
+		})
+	}()
+	return sseResponse(pr), nil
+}
+
 func closeUpstream(r io.Reader) {
 	if c, ok := r.(io.Closer); ok {
 		_ = c.Close()
@@ -83,9 +110,9 @@ type openAIStreamEncoder struct {
 	finish      string
 	toolStarted map[int]bool
 	// Accumulated from KindUsage (Anthropic message_start / message_delta, OpenAI stream).
-	inputTok  int
-	outputTok int
-	cacheRead int
+	inputTok   int
+	outputTok  int
+	cacheRead  int
 	cacheWrite int
 }
 

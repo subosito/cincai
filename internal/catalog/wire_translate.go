@@ -8,6 +8,7 @@ import (
 const (
 	AdapterWireTranslateA2O = "wire-translate-a2o"
 	AdapterWireTranslateO2A = "wire-translate-o2a"
+	AdapterWireTranslateR2O = "wire-translate-r2o"
 )
 
 const wireTranslateSurfacePrefix = "__cincai_"
@@ -74,6 +75,10 @@ func wireTranslateAdapter(upstreamProtocol, ingressWire string) (string, bool) {
 	case corecatalog.WireOpenAIChat:
 		if upstreamProtocol == "anthropic-messages" {
 			return AdapterWireTranslateO2A, true
+		}
+	case corecatalog.WireOpenAIResponses:
+		if upstreamProtocol == "openai-chat-completions" || upstreamProtocol == "openai-compat-chat" {
+			return AdapterWireTranslateR2O, true
 		}
 	}
 	return "", false

@@ -28,6 +28,7 @@ func (a *Adapter) Name() string { return "wire-translate" }
 func (a *Adapter) Register(reg *adaptersdk.Registry) error {
 	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateA2O, &Handler{Name: cincaicatalog.AdapterWireTranslateA2O})
 	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateO2A, &Handler{Name: cincaicatalog.AdapterWireTranslateO2A})
+	adaptersdk.RegisterChatAdapter(reg, cincaicatalog.AdapterWireTranslateR2O, &Handler{Name: cincaicatalog.AdapterWireTranslateR2O})
 	return nil
 }
 
@@ -48,6 +49,8 @@ func (h *Handler) Forward(ctx context.Context, client *http.Client, t handler.Ta
 		return forwardA2O(ctx, client, t, raw, hdr)
 	case cincaicatalog.AdapterWireTranslateO2A:
 		return forwardO2A(ctx, client, t, raw, hdr)
+	case cincaicatalog.AdapterWireTranslateR2O:
+		return forwardR2O(ctx, client, t, raw, hdr)
 	default:
 		return nil, fmt.Errorf("wire-translate: unknown handler %q", h.Name)
 	}
@@ -129,6 +132,61 @@ func forwardO2A(ctx context.Context, client *http.Client, t handler.Target, raw 
 		return nil, err
 	}
 	body, err := encodeOpenAIJSON(events, model)
+	if err != nil {
+		return nil, err
+	}
+	return jsonResponse(body), nil
+}
+
+// responsesStatefulGuard rejects store:true + previous_response_id: a
+// translated hop targets a stateless upstream that holds no server-side turns,
+// so silently relaying would send an incomplete history (docs §4).
+func responsesStatefulGuard(req *responsesRequest) *http.Response {
+	if !req.statefulContinuation() {
+		return nil
+	}
+	return jsonErrorResponse(http.StatusBadRequest,
+		"wire-translate: responses stateful continuation (store+previous_response_id) is not supported on a translated hop")
+}
+
+func forwardR2O(ctx context.Context, client *http.Client, t handler.Target, raw []byte, hdr http.Header) (*http.Response, error) {
+	var ingress responsesRequest
+	if err := decodeJSON(raw, &ingress); err != nil {
+		return nil, err
+	}
+	if resp := responsesStatefulGuard(&ingress); resp != nil {
+		return resp, nil
+	}
+	upstreamBody, err := responsesToChatRequest(raw, t.UpstreamModel)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := relayPOST(ctx, client, t, "/v1/chat/completions", bytes.NewReader(upstreamBody), hdr)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return passthroughError(resp)
+	}
+	model := strings.TrimSpace(ingress.Model)
+	if model == "" {
+		model = t.UpstreamModel
+	}
+	if ingress.Stream {
+		// Transfer resp.Body ownership to the stream pipe (do not Close here).
+		return translateOpenAIStreamToResponses(resp.Body, model)
+	}
+	defer resp.Body.Close()
+	outRaw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	events, err := openAINonStreamToEvents(outRaw)
+	if err != nil {
+		return nil, err
+	}
+	body, err := encodeResponsesJSON(events, model)
 	if err != nil {
 		return nil, err
 	}
@@ -228,6 +286,17 @@ func passthroughError(resp *http.Response) (*http.Response, error) {
 func jsonResponse(body []byte) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+}
+
+func jsonErrorResponse(status int, msg string) *http.Response {
+	body, _ := json.Marshal(map[string]any{
+		"error": map[string]any{"message": msg, "type": "invalid_request_error"},
+	})
+	return &http.Response{
+		StatusCode: status,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewReader(body)),
 	}
