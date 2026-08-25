@@ -31,6 +31,11 @@ type openaiChatRequest struct {
 	StreamOptions   *streamOptions  `json:"stream_options,omitempty"`
 	MaxTokens       int             `json:"max_tokens,omitempty"`
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	// ToolChoice is a mode string or the named-function object form.
+	ToolChoice        any      `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool    `json:"parallel_tool_calls,omitempty"`
+	Temperature       *float64 `json:"temperature,omitempty"`
+	TopP              *float64 `json:"top_p,omitempty"`
 }
 
 type openaiMessage struct {

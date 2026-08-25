@@ -34,6 +34,14 @@ func responsesToChatRequest(raw []byte, upstreamModel string) ([]byte, error) {
 	if effort := req.effort(); effort != "" {
 		out.ReasoningEffort = effort
 	}
+	if mode, name := req.toolChoice(); name != "" {
+		out.ToolChoice = map[string]any{"type": "function", "function": map[string]any{"name": name}}
+	} else if mode != "" {
+		out.ToolChoice = mode
+	}
+	out.ParallelToolCalls = req.ParallelToolCalls
+	out.Temperature = req.Temperature
+	out.TopP = req.TopP
 	for _, t := range req.Tools {
 		name := strings.TrimSpace(t.Name)
 		if name == "" || strings.TrimSpace(t.Type) != "function" {
@@ -208,6 +216,35 @@ func responsesToAnthropicRequest(raw []byte, upstreamModel string) ([]byte, erro
 		} else {
 			out["thinking"] = map[string]any{"type": "disabled"}
 		}
+	}
+	// tool_choice: "required" → any, named → tool, none/auto pass through;
+	// parallel_tool_calls inverts to disable_parallel_tool_use.
+	toolChoice := map[string]any{}
+	if mode, name := req.toolChoice(); name != "" {
+		toolChoice["type"] = "tool"
+		toolChoice["name"] = name
+	} else if mode != "" {
+		switch mode {
+		case "required":
+			toolChoice["type"] = "any"
+		case "none", "auto":
+			toolChoice["type"] = mode
+		}
+	}
+	if req.ParallelToolCalls != nil && !*req.ParallelToolCalls {
+		toolChoice["disable_parallel_tool_use"] = true
+	}
+	if len(toolChoice) > 0 {
+		if _, ok := toolChoice["type"]; !ok {
+			toolChoice["type"] = "auto"
+		}
+		out["tool_choice"] = toolChoice
+	}
+	if req.Temperature != nil {
+		out["temperature"] = *req.Temperature
+	}
+	if req.TopP != nil {
+		out["top_p"] = *req.TopP
 	}
 	return json.Marshal(out)
 }

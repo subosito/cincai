@@ -220,6 +220,134 @@ func TestResponsesToAnthropicRequestToolOutputObject(t *testing.T) {
 	}
 }
 
+// TestResponsesToChatRequestToolChoiceAndSampling: tool_choice (mode and
+// named forms), parallel_tool_calls, temperature and top_p must reach the
+// chat upstream — dropping them silently gives free-choice behaviour and
+// default sampling.
+func TestResponsesToChatRequestToolChoiceAndSampling(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"model": "m",
+		"input": "hi",
+		"tool_choice": {"type": "function", "name": "read"},
+		"parallel_tool_calls": false,
+		"temperature": 0.2,
+		"top_p": 0.9,
+		"tools": [{"type": "function", "name": "read", "parameters": {"type": "object"}}]
+	}`)
+	out, err := responsesToChatRequest(raw, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req map[string]any
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	tc, _ := req["tool_choice"].(map[string]any)
+	fn, _ := tc["function"].(map[string]any)
+	if tc["type"] != "function" || fn["name"] != "read" {
+		t.Fatalf("tool_choice=%v", req["tool_choice"])
+	}
+	if v, ok := req["parallel_tool_calls"].(bool); !ok || v {
+		t.Fatalf("parallel_tool_calls=%v", req["parallel_tool_calls"])
+	}
+	if req["temperature"] != 0.2 || req["top_p"] != 0.9 {
+		t.Fatalf("sampling=%v %v", req["temperature"], req["top_p"])
+	}
+
+	// Mode-string form passes through.
+	out, err = responsesToChatRequest([]byte(`{"model":"m","input":"hi","tool_choice":"required"}`), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req2 map[string]any
+	if err := json.Unmarshal(out, &req2); err != nil {
+		t.Fatal(err)
+	}
+	if req2["tool_choice"] != "required" {
+		t.Fatalf("tool_choice=%v", req2["tool_choice"])
+	}
+}
+
+// TestResponsesToAnthropicRequestToolChoice: "required" maps to
+// {"type":"any"}, a named function to {"type":"tool","name":X}, and
+// parallel_tool_calls:false inverts to disable_parallel_tool_use.
+func TestResponsesToAnthropicRequestToolChoice(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want map[string]any
+	}{
+		{
+			name: "required maps to any",
+			raw:  `{"model":"m","input":"hi","tool_choice":"required"}`,
+			want: map[string]any{"type": "any"},
+		},
+		{
+			name: "named function maps to tool",
+			raw:  `{"model":"m","input":"hi","tool_choice":{"type":"function","name":"read"}}`,
+			want: map[string]any{"type": "tool", "name": "read"},
+		},
+		{
+			name: "none passes through",
+			raw:  `{"model":"m","input":"hi","tool_choice":"none"}`,
+			want: map[string]any{"type": "none"},
+		},
+		{
+			name: "parallel false inverts with default type",
+			raw:  `{"model":"m","input":"hi","parallel_tool_calls":false}`,
+			want: map[string]any{"type": "auto", "disable_parallel_tool_use": true},
+		},
+		{
+			name: "parallel false merges into named choice",
+			raw:  `{"model":"m","input":"hi","tool_choice":{"type":"function","name":"read"},"parallel_tool_calls":false}`,
+			want: map[string]any{"type": "tool", "name": "read", "disable_parallel_tool_use": true},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := responsesToAnthropicRequest([]byte(tc.raw), "m")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var req map[string]any
+			if err := json.Unmarshal(out, &req); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := req["tool_choice"].(map[string]any)
+			if len(got) != len(tc.want) {
+				t.Fatalf("tool_choice=%v want %v", got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Fatalf("tool_choice[%s]=%v want %v (%v)", k, got[k], v, got)
+				}
+			}
+		})
+	}
+}
+
+// TestResponsesToAnthropicRequestSampling: temperature/top_p pass through
+// with the same field names; an explicit zero is still forwarded.
+func TestResponsesToAnthropicRequestSampling(t *testing.T) {
+	t.Parallel()
+	out, err := responsesToAnthropicRequest([]byte(`{"model":"m","input":"hi","temperature":0,"top_p":0.5}`), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req map[string]any
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := req["temperature"]; !ok || v != float64(0) {
+		t.Fatalf("temperature=%v ok=%v", req["temperature"], ok)
+	}
+	if req["top_p"] != 0.5 {
+		t.Fatalf("top_p=%v", req["top_p"])
+	}
+}
+
 func TestResponsesToChatRequestStringInput(t *testing.T) {
 	t.Parallel()
 	out, err := responsesToChatRequest([]byte(`{"model":"m","input":"hi"}`), "m")

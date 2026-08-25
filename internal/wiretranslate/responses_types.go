@@ -18,6 +18,42 @@ type responsesRequest struct {
 	Stream             bool                `json:"stream,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
 	MaxOutputTokens    int                 `json:"max_output_tokens,omitempty"`
+	// ToolChoice is a mode string ("none"|"auto"|"required") or a
+	// named-function object ({"type":"function","name":X}).
+	ToolChoice        json.RawMessage `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
+	Temperature       *float64        `json:"temperature,omitempty"`
+	TopP              *float64        `json:"top_p,omitempty"`
+}
+
+// toolChoice parses the tool_choice field into a mode and, for the
+// named-function object form, the function name.
+func (r *responsesRequest) toolChoice() (mode, name string) {
+	raw := r.ToolChoice
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.ToLower(strings.TrimSpace(s)), ""
+	}
+	var obj struct {
+		Type     string `json:"type"`
+		Name     string `json:"name"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return "", ""
+	}
+	if name = strings.TrimSpace(obj.Name); name == "" {
+		name = strings.TrimSpace(obj.Function.Name)
+	}
+	if name != "" {
+		return "named", name
+	}
+	return "", ""
 }
 
 type responsesReasoning struct {
