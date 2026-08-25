@@ -354,13 +354,16 @@ func (e *responsesStreamEncoder) responseObject() map[string]any {
 	if model == "" {
 		model = "unknown"
 	}
+	// inputTok is the total prompt including cached tokens (KindUsage
+	// contract; Anthropic parsers fold cache_read/cache_creation in at the
+	// boundary), so cached_tokens is always a subset of input_tokens.
+	// input_tokens_details is emitted unconditionally: OpenAI always sends
+	// it and SDK models with a non-optional field fail to decode without it.
 	usage := map[string]any{
-		"input_tokens":  e.inputTok,
-		"output_tokens": e.outputTok,
-		"total_tokens":  e.inputTok + e.outputTok,
-	}
-	if e.cacheRead > 0 {
-		usage["input_tokens_details"] = map[string]any{"cached_tokens": e.cacheRead}
+		"input_tokens":         e.inputTok,
+		"output_tokens":        e.outputTok,
+		"total_tokens":         e.inputTok + e.outputTok,
+		"input_tokens_details": map[string]any{"cached_tokens": e.cacheRead},
 	}
 	output := e.doneItems
 	if output == nil {

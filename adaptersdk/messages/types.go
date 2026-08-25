@@ -45,6 +45,12 @@ type StreamEvent struct {
 	Message string
 	Code    string
 
+	// InputTokens is the TOTAL prompt size: cached tokens are a subset, not
+	// an addition (CacheReadTokens + CacheWriteTokens <= InputTokens). This
+	// matches OpenAI/Responses usage. Anthropic reports input_tokens
+	// EXCLUDING cached tokens, so Anthropic parsers add
+	// cache_read_input_tokens + cache_creation_input_tokens in at the
+	// boundary — encoders must never add them again.
 	InputTokens      int
 	OutputTokens     int
 	CacheReadTokens  int

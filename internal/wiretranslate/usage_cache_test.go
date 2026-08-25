@@ -87,6 +87,85 @@ func TestAnthropicNonStreamToEvents_cache(t *testing.T) {
 	}
 }
 
+// TestParseAnthropicFrame_totalInputTokens: Anthropic's input_tokens excludes
+// cached tokens; the KindUsage contract is the total prompt, so the parser
+// folds cache_read + cache_creation in once.
+func TestParseAnthropicFrame_totalInputTokens(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"type":"message_start","message":{"id":"msg_1","model":"claude","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":4000,"cache_creation_input_tokens":200}}}`)
+	evs, err := parseAnthropicFrame("message_start", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var usage *messages.StreamEvent
+	for i := range evs {
+		if evs[i].Kind == messages.KindUsage {
+			usage = &evs[i]
+		}
+	}
+	if usage == nil {
+		t.Fatalf("events=%+v", evs)
+	}
+	if usage.InputTokens != 4300 {
+		t.Fatalf("InputTokens=%d want 4300 (100 + 4000 + 200)", usage.InputTokens)
+	}
+	if usage.CacheReadTokens != 4000 || usage.CacheWriteTokens != 200 {
+		t.Fatalf("cache read=%d write=%d", usage.CacheReadTokens, usage.CacheWriteTokens)
+	}
+	if usage.CacheReadTokens+usage.CacheWriteTokens > usage.InputTokens {
+		t.Fatalf("invariant violated: cached %d + %d > input %d", usage.CacheReadTokens, usage.CacheWriteTokens, usage.InputTokens)
+	}
+}
+
+// TestEncodeOpenAIJSON_promptIncludesCache: the o2a path — Anthropic usage
+// normalized at the parser must surface on the OpenAI wire as the full
+// prompt_tokens (OpenAI's prompt_tokens includes cached tokens).
+func TestEncodeOpenAIJSON_promptIncludesCache(t *testing.T) {
+	t.Parallel()
+	b, err := encodeOpenAIJSON([]messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "m1", Model: "claude"},
+		{Kind: messages.KindTextDelta, Text: "ok"},
+		{Kind: messages.KindUsage, InputTokens: 4300, OutputTokens: 3, CacheReadTokens: 4000, CacheWriteTokens: 200},
+		{Kind: messages.KindMessageStop},
+	}, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp struct {
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(b, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Usage.PromptTokens != 4300 {
+		t.Fatalf("prompt_tokens=%d want 4300: %s", resp.Usage.PromptTokens, b)
+	}
+}
+
+// TestEncodeResponsesSSEUsageDetailsAlwaysEmitted: OpenAI always sends
+// input_tokens_details; SDK models with a non-optional field fail to decode
+// when it is absent, so emit it even with zero cached tokens.
+func TestEncodeResponsesSSEUsageDetailsAlwaysEmitted(t *testing.T) {
+	t.Parallel()
+	frames := encodeResponsesFixture(t, []messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindTextDelta, Text: "ok"},
+		{Kind: messages.KindUsage, InputTokens: 10, OutputTokens: 2},
+		{Kind: messages.KindMessageStop},
+	}, "m")
+	completed := frames[len(frames)-1].Data["response"].(map[string]any)
+	usage := completed["usage"].(map[string]any)
+	details, ok := usage["input_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatalf("input_tokens_details missing: %v", usage)
+	}
+	if details["cached_tokens"] != float64(0) {
+		t.Fatalf("cached_tokens=%v", details)
+	}
+}
+
 func TestParseOpenAIChunk_cacheRead(t *testing.T) {
 	t.Parallel()
 	active := map[int]bool{}

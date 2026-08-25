@@ -92,7 +92,8 @@ func TestTranslateAnthropicStreamToOpenAI_incremental(t *testing.T) {
 		t.Fatalf("missing DONE: %q", out)
 	}
 	// Usage must appear so gateway metering can parse OpenAI-shaped stream frames.
-	if !strings.Contains(out, `"prompt_tokens":10`) {
+	// prompt_tokens is the total prompt: 10 uncached + 4 cache_read = 14.
+	if !strings.Contains(out, `"prompt_tokens":14`) {
 		t.Fatalf("missing prompt_tokens in stream: %q", out)
 	}
 	if !strings.Contains(out, `"completion_tokens":2`) {

@@ -65,7 +65,7 @@ func parseAnthropicFrame(eventName string, data []byte) ([]messages.StreamEvent,
 		if u := raw.Message.Usage; u != nil && (u.InputTokens > 0 || u.OutputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0) {
 			out = append(out, messages.StreamEvent{
 				Kind:             messages.KindUsage,
-				InputTokens:      u.InputTokens,
+				InputTokens:      anthropicTotalInputTokens(u.InputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens),
 				OutputTokens:     u.OutputTokens,
 				CacheReadTokens:  u.CacheReadInputTokens,
 				CacheWriteTokens: u.CacheCreationInputTokens,
@@ -93,7 +93,7 @@ func parseAnthropicFrame(eventName string, data []byte) ([]messages.StreamEvent,
 		if raw.Usage.InputTokens > 0 || raw.Usage.OutputTokens > 0 || raw.Usage.CacheReadInputTokens > 0 || raw.Usage.CacheCreationInputTokens > 0 {
 			out = append(out, messages.StreamEvent{
 				Kind:             messages.KindUsage,
-				InputTokens:      raw.Usage.InputTokens,
+				InputTokens:      anthropicTotalInputTokens(raw.Usage.InputTokens, raw.Usage.CacheReadInputTokens, raw.Usage.CacheCreationInputTokens),
 				OutputTokens:     raw.Usage.OutputTokens,
 				CacheReadTokens:  raw.Usage.CacheReadInputTokens,
 				CacheWriteTokens: raw.Usage.CacheCreationInputTokens,
@@ -143,6 +143,13 @@ func parseAnthropicFrame(eventName string, data []byte) ([]messages.StreamEvent,
 	default:
 		return nil, nil
 	}
+}
+
+// anthropicTotalInputTokens normalizes Anthropic usage to the KindUsage
+// contract: Anthropic's input_tokens excludes cached tokens, so the cached
+// reads/creations are folded in once here to yield the total prompt size.
+func anthropicTotalInputTokens(input, cacheRead, cacheWrite int) int {
+	return input + cacheRead + cacheWrite
 }
 
 func parseAnthropicContentDelta(data []byte) ([]messages.StreamEvent, error) {

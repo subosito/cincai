@@ -302,7 +302,7 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 	if u.InputTokens > 0 || u.OutputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
 		events = append(events, messages.StreamEvent{
 			Kind:             messages.KindUsage,
-			InputTokens:      u.InputTokens,
+			InputTokens:      anthropicTotalInputTokens(u.InputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens),
 			OutputTokens:     u.OutputTokens,
 			CacheReadTokens:  u.CacheReadInputTokens,
 			CacheWriteTokens: u.CacheCreationInputTokens,

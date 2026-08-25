@@ -291,11 +291,18 @@ func TestR2ARoundTrip(t *testing.T) {
 		t.Fatalf("done item=%v", doneItem)
 	}
 	usage := completed["usage"].(map[string]any)
-	if usage["input_tokens"] != float64(100) || usage["output_tokens"] != float64(25) {
+	// Anthropic's input_tokens excludes cached tokens; the Responses
+	// contract includes them, so the parser folds cache_read in:
+	// 100 uncached + 90 cached = 190 total prompt tokens.
+	if usage["input_tokens"] != float64(190) || usage["output_tokens"] != float64(25) {
 		t.Fatalf("usage=%v", usage)
 	}
-	if usage["input_tokens_details"].(map[string]any)["cached_tokens"] != float64(90) {
+	cached := usage["input_tokens_details"].(map[string]any)["cached_tokens"]
+	if cached != float64(90) {
 		t.Fatalf("cached_tokens=%v", usage)
+	}
+	if cached.(float64) > usage["input_tokens"].(float64) {
+		t.Fatalf("invariant violated: cached_tokens=%v > input_tokens=%v", cached, usage["input_tokens"])
 	}
 }
 
@@ -345,8 +352,17 @@ func TestR2ANonStreamRoundTrip(t *testing.T) {
 		t.Fatalf("function_call args=%v", fcArgs)
 	}
 	usage := resp["usage"].(map[string]any)
-	if usage["input_tokens_details"].(map[string]any)["cached_tokens"] != float64(40) {
+	// Non-stream anthropic usage is normalized the same way:
+	// 50 uncached + 40 cached = 90 total prompt tokens.
+	if usage["input_tokens"] != float64(90) {
+		t.Fatalf("input_tokens=%v", usage["input_tokens"])
+	}
+	cached := usage["input_tokens_details"].(map[string]any)["cached_tokens"]
+	if cached != float64(40) {
 		t.Fatalf("usage=%v", usage)
+	}
+	if cached.(float64) > usage["input_tokens"].(float64) {
+		t.Fatalf("invariant violated: cached_tokens=%v > input_tokens=%v", cached, usage["input_tokens"])
 	}
 }
 
