@@ -160,6 +160,25 @@ func TestParseResponsesStream(t *testing.T) {
 			},
 		},
 		{
+			name: "completed with top-level usage",
+			fixture: "event: response.completed\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\"},\"usage\":{\"input_tokens\":42,\"output_tokens\":7,\"input_tokens_details\":{\"cached_tokens\":30}}}\n\n",
+			check: func(t *testing.T, evs []messages.StreamEvent) {
+				// Hosts emit usage inside the response object or at the top
+				// level; missing the fallback reports zero tokens.
+				if len(evs) != 2 {
+					t.Fatalf("events=%+v", evs)
+				}
+				u := evs[0]
+				if u.Kind != messages.KindUsage || u.InputTokens != 42 || u.OutputTokens != 7 || u.CacheReadTokens != 30 {
+					t.Fatalf("usage=%+v", u)
+				}
+				if evs[1].Kind != messages.KindMessageStop {
+					t.Fatalf("stop=%+v", evs[1])
+				}
+			},
+		},
+		{
 			name: "failed",
 			fixture: "event: response.failed\n" +
 				"data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_1\",\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"boom\"}}}\n\n",

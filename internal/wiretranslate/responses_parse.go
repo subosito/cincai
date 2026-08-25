@@ -201,25 +201,34 @@ func parseResponsesItemDone(data []byte, state *responsesParseState) ([]messages
 	return append(out, messages.StreamEvent{Kind: messages.KindToolUseStop, ToolIndex: raw.OutputIndex}), nil
 }
 
+// responsesUsageWire is the usage shape carried by response.completed,
+// either inside the response object or (some hosts) at the top level.
+type responsesUsageWire struct {
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	InputTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
+}
+
 func parseResponsesCompleted(data []byte) ([]messages.StreamEvent, error) {
 	var raw struct {
 		Response struct {
-			Usage *struct {
-				InputTokens        int `json:"input_tokens"`
-				OutputTokens       int `json:"output_tokens"`
-				InputTokensDetails *struct {
-					CachedTokens int `json:"cached_tokens"`
-				} `json:"input_tokens_details"`
-			} `json:"usage"`
+			Usage *responsesUsageWire `json:"usage"`
 		} `json:"response"`
+		Usage *responsesUsageWire `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 	// Usage precedes MessageStop so encoders that assemble the terminal frame
 	// on stop (chat completed, responses completed) see the token counts.
+	u := raw.Response.Usage
+	if u == nil {
+		u = raw.Usage // top-level fallback: hosts emit both shapes
+	}
 	var out []messages.StreamEvent
-	if u := raw.Response.Usage; u != nil {
+	if u != nil {
 		cacheRead := 0
 		if u.InputTokensDetails != nil {
 			cacheRead = u.InputTokensDetails.CachedTokens
