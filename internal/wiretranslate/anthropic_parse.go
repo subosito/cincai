@@ -151,6 +151,7 @@ func parseAnthropicContentDelta(data []byte) ([]messages.StreamEvent, error) {
 		Delta struct {
 			Type        string `json:"type"`
 			Text        string `json:"text"`
+			Thinking    string `json:"thinking"`
 			PartialJSON string `json:"partial_json"`
 		} `json:"delta"`
 	}
@@ -160,6 +161,8 @@ func parseAnthropicContentDelta(data []byte) ([]messages.StreamEvent, error) {
 	switch raw.Delta.Type {
 	case "text_delta":
 		return []messages.StreamEvent{{Kind: messages.KindTextDelta, Text: raw.Delta.Text}}, nil
+	case "thinking_delta":
+		return []messages.StreamEvent{{Kind: messages.KindThinkingDelta, Thinking: raw.Delta.Thinking}}, nil
 	case "input_json_delta":
 		return []messages.StreamEvent{{
 			Kind:        messages.KindToolInputDelta,

@@ -24,12 +24,13 @@ type anthropicTool struct {
 }
 
 type openaiChatRequest struct {
-	Model         string          `json:"model"`
-	Messages      []openaiMessage `json:"messages"`
-	Tools         []openaiTool    `json:"tools,omitempty"`
-	Stream        bool            `json:"stream,omitempty"`
-	StreamOptions *streamOptions  `json:"stream_options,omitempty"`
-	MaxTokens     int             `json:"max_tokens,omitempty"`
+	Model           string          `json:"model"`
+	Messages        []openaiMessage `json:"messages"`
+	Tools           []openaiTool    `json:"tools,omitempty"`
+	Stream          bool            `json:"stream,omitempty"`
+	StreamOptions   *streamOptions  `json:"stream_options,omitempty"`
+	MaxTokens       int             `json:"max_tokens,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 }
 
 type openaiMessage struct {
