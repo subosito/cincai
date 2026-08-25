@@ -25,6 +25,7 @@ type responsesStreamEncoder struct {
 
 	createdSent bool
 	wrote       bool
+	seq         int // sequence_number, injected into every frame by write
 
 	outputIndex int
 	itemSeq     int
@@ -82,6 +83,11 @@ func newResponsesStreamEncoder(w io.Writer, model string) *responsesStreamEncode
 }
 
 func (e *responsesStreamEncoder) write(event string, payload any) error {
+	// Official SDK models treat sequence_number as required on every event.
+	if m, ok := payload.(map[string]any); ok {
+		e.seq++
+		m["sequence_number"] = e.seq
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -136,6 +142,7 @@ func (e *responsesStreamEncoder) closeItem() error {
 	var item map[string]any
 	switch e.itemKind {
 	case "message":
+		text := e.textBuf.String()
 		item = map[string]any{
 			"type":   "message",
 			"id":     e.itemID,
@@ -143,8 +150,29 @@ func (e *responsesStreamEncoder) closeItem() error {
 			"status": "completed",
 			"content": []map[string]any{{
 				"type": "output_text",
-				"text": e.textBuf.String(),
+				"text": text,
 			}},
+		}
+		// SDKs finalize a text part on output_text.done / content_part.done;
+		// emitting only output_item.done leaves ResponseTextDoneEvent
+		// listeners waiting forever.
+		if err := e.write("response.output_text.done", map[string]any{
+			"type":          "response.output_text.done",
+			"item_id":       e.itemID,
+			"output_index":  e.outputIndex,
+			"content_index": 0,
+			"text":          text,
+		}); err != nil {
+			return err
+		}
+		if err := e.write("response.content_part.done", map[string]any{
+			"type":          "response.content_part.done",
+			"item_id":       e.itemID,
+			"output_index":  e.outputIndex,
+			"content_index": 0,
+			"part":          map[string]any{"type": "output_text", "text": text},
+		}); err != nil {
+			return err
 		}
 	case "reasoning":
 		summary := []map[string]any{}
@@ -253,6 +281,7 @@ func (e *responsesStreamEncoder) openMessageItem() error {
 	}
 	return e.write("response.content_part.added", map[string]any{
 		"type":          "response.content_part.added",
+		"item_id":       e.itemID,
 		"output_index":  e.outputIndex,
 		"content_index": 0,
 		"part":          map[string]any{"type": "output_text", "text": ""},
@@ -303,6 +332,7 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		e.textBuf.WriteString(ev.Text)
 		return e.write("response.output_text.delta", map[string]any{
 			"type":          "response.output_text.delta",
+			"item_id":       e.itemID,
 			"output_index":  e.outputIndex,
 			"content_index": 0,
 			"delta":         ev.Text,
@@ -320,6 +350,7 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		e.thinkBuf.WriteString(ev.Thinking)
 		return e.write("response.reasoning.delta", map[string]any{
 			"type":          "response.reasoning.delta",
+			"item_id":       e.itemID,
 			"output_index":  e.outputIndex,
 			"content_index": 0,
 			"delta":         ev.Thinking,

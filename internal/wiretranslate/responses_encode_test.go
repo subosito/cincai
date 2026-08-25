@@ -71,6 +71,8 @@ func TestEncodeResponsesSSETextTurn(t *testing.T) {
 		"response.content_part.added",
 		"response.output_text.delta",
 		"response.output_text.delta",
+		"response.output_text.done",
+		"response.content_part.done",
 		"response.output_item.done",
 		"response.completed",
 	}
@@ -86,8 +88,16 @@ func TestEncodeResponsesSSETextTurn(t *testing.T) {
 	if frames[3].Data["output_index"] != float64(0) || frames[3].Data["content_index"] != float64(0) {
 		t.Fatalf("delta framing=%v", frames[3].Data)
 	}
+	// output_text.done / content_part.done carry the full assembled text.
+	if frames[5].Data["text"] != "Hello world" {
+		t.Fatalf("output_text.done=%v", frames[5].Data)
+	}
+	donePart := frames[6].Data["part"].(map[string]any)
+	if donePart["type"] != "output_text" || donePart["text"] != "Hello world" {
+		t.Fatalf("content_part.done=%v", frames[6].Data)
+	}
 	// output_item.done carries the assembled message item.
-	doneItem := frames[5].Data["item"].(map[string]any)
+	doneItem := frames[7].Data["item"].(map[string]any)
 	if doneItem["type"] != "message" || doneItem["role"] != "assistant" {
 		t.Fatalf("done item=%v", doneItem)
 	}
@@ -97,13 +107,48 @@ func TestEncodeResponsesSSETextTurn(t *testing.T) {
 		t.Fatalf("assembled text=%v", part)
 	}
 	// completed carries usage.
-	completed := frames[6].Data["response"].(map[string]any)
+	completed := frames[8].Data["response"].(map[string]any)
 	usage := completed["usage"].(map[string]any)
 	if usage["input_tokens"] != float64(10) || usage["output_tokens"] != float64(2) {
 		t.Fatalf("usage=%v", usage)
 	}
 	if completed["status"] != "completed" {
 		t.Fatalf("status=%v", completed["status"])
+	}
+}
+
+// TestEncodeResponsesSSEFrameCompleteness: official SDK models
+// (openai-python ResponseTextDeltaEvent, openai-node's discriminated union)
+// treat sequence_number and item_id as required — a stream missing them
+// fails validation instead of rendering text.
+func TestEncodeResponsesSSEFrameCompleteness(t *testing.T) {
+	t.Parallel()
+	frames := encodeResponsesFixture(t, []messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindTextDelta, Text: "hi"},
+		{Kind: messages.KindMessageStop},
+	}, "m")
+	// sequence_number is present and strictly increasing on every frame.
+	for i, f := range frames {
+		seq, ok := f.Data["sequence_number"].(float64)
+		if !ok || int(seq) != i+1 {
+			t.Fatalf("frame %d (%s) sequence_number=%v", i, f.Event, f.Data["sequence_number"])
+		}
+	}
+	var itemID string
+	for _, f := range frames {
+		switch f.Event {
+		case "response.output_item.added":
+			itemID = f.Data["item"].(map[string]any)["id"].(string)
+		case "response.content_part.added", "response.output_text.delta",
+			"response.output_text.done", "response.content_part.done":
+			if f.Data["item_id"] != itemID {
+				t.Fatalf("%s item_id=%v want %v", f.Event, f.Data["item_id"], itemID)
+			}
+		}
+	}
+	if itemID == "" {
+		t.Fatal("no message item added")
 	}
 }
 
@@ -125,6 +170,8 @@ func TestEncodeResponsesSSEReasoning(t *testing.T) {
 		"response.output_item.added", // message
 		"response.content_part.added",
 		"response.output_text.delta",
+		"response.output_text.done",
+		"response.content_part.done",
 		"response.output_item.done", // message
 		"response.completed",
 	}
@@ -142,6 +189,10 @@ func TestEncodeResponsesSSEReasoning(t *testing.T) {
 	summary := doneItem["summary"].([]any)
 	if len(summary) != 1 || summary[0].(map[string]any)["text"] != "Let me think..." {
 		t.Fatalf("reasoning summary=%v", doneItem)
+	}
+	// Reasoning deltas carry item_id so SDK models validate.
+	if frames[2].Data["item_id"] != added["id"] {
+		t.Fatalf("reasoning delta item_id=%v want %v", frames[2].Data["item_id"], added["id"])
 	}
 	// Reasoning and message are distinct output items.
 	if frames[1].Data["output_index"] != float64(0) || frames[5].Data["output_index"] != float64(1) {
