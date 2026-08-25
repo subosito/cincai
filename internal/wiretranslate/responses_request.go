@@ -53,8 +53,9 @@ func responsesToChatRequest(raw []byte, upstreamModel string) ([]byte, error) {
 
 // responsesInputToOpenAI flattens the input item list to chat messages.
 // Consecutive function_call items merge into one assistant message's
-// tool_calls; function_call_output becomes a role:"tool" message correlated
-// by call_id.
+// tool_calls — including a preceding assistant message item, so the history
+// never holds consecutive same-role messages; function_call_output becomes
+// a role:"tool" message correlated by call_id.
 func responsesInputToOpenAI(req *responsesRequest) ([]openaiMessage, error) {
 	items, err := parseResponsesInput(req.Input)
 	if err != nil {
@@ -66,7 +67,16 @@ func responsesInputToOpenAI(req *responsesRequest) ([]openaiMessage, error) {
 		if len(pending) == 0 {
 			return
 		}
-		out = append(out, openaiMessage{Role: "assistant", Content: "", ToolCalls: pending})
+		// An assistant turn with both prose and tool calls arrives as a
+		// message item followed by function_call items. Attach the calls to
+		// that assistant message: appending a second one produces
+		// consecutive same-role messages, which DeepSeek, Qwen and several
+		// vLLM/SGLang front ends reject with a 400.
+		if n := len(out); n > 0 && out[n-1].Role == "assistant" && len(out[n-1].ToolCalls) == 0 {
+			out[n-1].ToolCalls = pending
+		} else {
+			out = append(out, openaiMessage{Role: "assistant", Content: "", ToolCalls: pending})
+		}
 		pending = nil
 	}
 	if s := strings.TrimSpace(req.Instructions); s != "" {

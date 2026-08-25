@@ -72,6 +72,49 @@ func TestResponsesToChatRequest(t *testing.T) {
 	}
 }
 
+// TestResponsesToChatRequestMergesToolCallsIntoAssistantMessage: an
+// assistant turn with both prose and a tool call arrives as a message item
+// followed by function_call items. Appending a separate
+// {role:"assistant", tool_calls:[...]} message would produce consecutive
+// same-role messages, which DeepSeek, Qwen and several vLLM/SGLang front
+// ends reject with a 400 — the calls merge into the prose message instead.
+func TestResponsesToChatRequestMergesToolCallsIntoAssistantMessage(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"model": "m",
+		"input": [
+			{"role": "user", "content": "read foo.txt"},
+			{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Let me read it."}]},
+			{"type": "function_call", "call_id": "call_1", "name": "read", "arguments": "{\"path\":\"foo.txt\"}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": "contents"}
+		]
+	}`)
+	out, err := responsesToChatRequest(raw, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req openaiChatRequest
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	wantRoles := []string{"user", "assistant", "tool"}
+	if len(req.Messages) != len(wantRoles) {
+		t.Fatalf("messages=%+v", req.Messages)
+	}
+	for i, role := range wantRoles {
+		if req.Messages[i].Role != role {
+			t.Fatalf("messages[%d].Role=%q want %q (%+v)", i, req.Messages[i].Role, role, req.Messages)
+		}
+	}
+	asst := req.Messages[1]
+	if asst.Content != "Let me read it." {
+		t.Fatalf("assistant content=%+v", asst.Content)
+	}
+	if len(asst.ToolCalls) != 1 || asst.ToolCalls[0].ID != "call_1" {
+		t.Fatalf("assistant tool_calls=%+v", asst.ToolCalls)
+	}
+}
+
 func TestResponsesToChatRequestMergesConsecutiveFunctionCalls(t *testing.T) {
 	t.Parallel()
 	raw := []byte(`{
