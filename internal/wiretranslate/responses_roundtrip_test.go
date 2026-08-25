@@ -44,6 +44,56 @@ func TestForwardR2ARejectsStatefulContinuation(t *testing.T) {
 	}
 }
 
+// TestForwardR2ORejectsStatefulContinuationStoreOmitted: store defaults to
+// true in the Responses API, so a request with previous_response_id and no
+// store field (the OpenAI SDK does not serialize unset fields) is a stateful
+// continuation and must be rejected — relaying it would silently truncate the
+// conversation history.
+func TestForwardR2ORejectsStatefulContinuationStoreOmitted(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"model":"m","previous_response_id":"resp_abc","input":"hi"}`)
+	resp, err := forwardR2O(context.Background(), nil, handler.Target{}, raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "stateful continuation") {
+		t.Fatalf("body=%s", body)
+	}
+}
+
+func TestForwardR2ARejectsStatefulContinuationStoreOmitted(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"model":"m","previous_response_id":"resp_abc","input":"hi"}`)
+	resp, err := forwardR2A(context.Background(), nil, handler.Target{}, raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+}
+
+// TestStatefulContinuationStoreFalseWithPreviousResponseID: store:false +
+// previous_response_id means the client holds the full history — not a
+// stateful continuation, so the guard stays down.
+func TestStatefulContinuationStoreFalseWithPreviousResponseID(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"model":"m","store":false,"previous_response_id":"resp_abc","input":"hi"}`)
+	var req responsesRequest
+	if err := decodeJSON(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.statefulContinuation() {
+		t.Fatal("guard fired on store:false request")
+	}
+}
+
 // TestForwardR2OAllowsStatelessHistory: store:false with a full item history
 // (the mow default) translates normally — the guard must not fire.
 func TestForwardR2OAllowsStatelessHistory(t *testing.T) {

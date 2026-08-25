@@ -48,9 +48,14 @@ type responsesInputItem struct {
 }
 
 // statefulContinuation reports whether the request relies on server-side turn
-// state, which a stateless chat/anthropic upstream cannot honor.
+// state, which a stateless chat/anthropic upstream cannot honor. store
+// defaults to true in the Responses API, so an omitted store with a
+// previous_response_id (what the OpenAI SDK sends) is still stateful.
 func (r *responsesRequest) statefulContinuation() bool {
-	return r.Store != nil && *r.Store && strings.TrimSpace(r.PreviousResponseID) != ""
+	if strings.TrimSpace(r.PreviousResponseID) == "" {
+		return false
+	}
+	return r.Store == nil || *r.Store // omitted store == true
 }
 
 // effort returns the client reasoning effort, preferring the top-level
