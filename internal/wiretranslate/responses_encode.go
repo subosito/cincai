@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,18 +28,21 @@ type responsesStreamEncoder struct {
 
 	outputIndex int
 	itemSeq     int
-	itemKind    string // "" | "message" | "reasoning" | "function_call"
+	itemKind    string // "" | "message" | "reasoning"
 	itemID      string
-	toolCallID  string
-	toolName    string
-	toolOutput  map[int]int    // upstream tool index → responses output_index
-	toolItemIDs map[int]string // upstream tool index → function_call item id
+
+	// function_call items accumulate per responses output_index: chat
+	// parallel_tool_calls interleaves argument deltas across indices, so a
+	// single shared buffer would seal truncated JSON into output_item.done.
+	toolItems   map[int]*responsesToolItem // responses output_index → open call
+	toolOutput  map[int]int                // upstream tool index → responses output_index
+	toolItemIDs map[int]string             // upstream tool index → function_call item id
+	lastToolOut int                        // most recently opened tool output_index
 
 	textBuf  strings.Builder
 	thinkBuf strings.Builder
-	argsBuf  strings.Builder
 
-	doneItems []any
+	doneItems []responsesDoneItem
 	status    string
 
 	inputTok   int
@@ -47,14 +51,32 @@ type responsesStreamEncoder struct {
 	cacheWrite int
 }
 
+// responsesToolItem is an in-flight function_call output item.
+type responsesToolItem struct {
+	itemID string
+	callID string
+	name   string
+	args   strings.Builder
+}
+
+// responsesDoneItem pairs a sealed output item with its output_index so the
+// response.completed output list stays index-ordered even when parallel
+// tool calls seal out of order.
+type responsesDoneItem struct {
+	index int
+	item  any
+}
+
 func newResponsesStreamEncoder(w io.Writer, model string) *responsesStreamEncoder {
 	return &responsesStreamEncoder{
 		w:           w,
 		model:       strings.TrimSpace(model),
 		created:     time.Now().Unix(),
 		outputIndex: -1,
+		toolItems:   map[int]*responsesToolItem{},
 		toolOutput:  map[int]int{},
 		toolItemIDs: map[int]string{},
+		lastToolOut: -1,
 		status:      "completed",
 	}
 }
@@ -103,8 +125,10 @@ func (e *responsesStreamEncoder) ensureCreated() error {
 	})
 }
 
-// closeItem seals the open output item, emitting output_item.done with the
-// assembled item and recording it for the response.completed output list.
+// closeItem seals the open message/reasoning output item, emitting
+// output_item.done with the assembled item and recording it for the
+// response.completed output list. Open function_call items are left alone:
+// they seal per output_index on their own KindToolUseStop.
 func (e *responsesStreamEncoder) closeItem() error {
 	if e.itemKind == "" {
 		return nil
@@ -132,30 +156,76 @@ func (e *responsesStreamEncoder) closeItem() error {
 			"id":      e.itemID,
 			"summary": summary,
 		}
-	case "function_call":
-		args := strings.TrimSpace(e.argsBuf.String())
-		if args == "" {
-			args = "{}"
-		}
-		item = map[string]any{
-			"type":      "function_call",
-			"id":        e.itemID,
-			"call_id":   e.toolCallID,
-			"name":      e.toolName,
-			"arguments": args,
-			"status":    "completed",
-		}
 	}
-	e.doneItems = append(e.doneItems, item)
+	e.doneItems = append(e.doneItems, responsesDoneItem{index: e.outputIndex, item: item})
 	e.itemKind = ""
 	e.textBuf.Reset()
 	e.thinkBuf.Reset()
-	e.argsBuf.Reset()
 	return e.write("response.output_item.done", map[string]any{
 		"type":         "response.output_item.done",
 		"output_index": e.outputIndex,
 		"item":         item,
 	})
+}
+
+// sealTool closes the open function_call item at outIdx, emitting its
+// output_item.done with the fully accumulated arguments.
+func (e *responsesStreamEncoder) sealTool(outIdx int) error {
+	ti, ok := e.toolItems[outIdx]
+	if !ok {
+		return nil
+	}
+	delete(e.toolItems, outIdx)
+	args := strings.TrimSpace(ti.args.String())
+	if args == "" {
+		args = "{}"
+	}
+	item := map[string]any{
+		"type":      "function_call",
+		"id":        ti.itemID,
+		"call_id":   ti.callID,
+		"name":      ti.name,
+		"arguments": args,
+		"status":    "completed",
+	}
+	e.doneItems = append(e.doneItems, responsesDoneItem{index: outIdx, item: item})
+	return e.write("response.output_item.done", map[string]any{
+		"type":         "response.output_item.done",
+		"output_index": outIdx,
+		"item":         item,
+	})
+}
+
+// sealAllTools closes every still-open function_call item in output_index
+// order (e.g. a stream that ends without per-tool stops).
+func (e *responsesStreamEncoder) sealAllTools() error {
+	idxs := make([]int, 0, len(e.toolItems))
+	for idx := range e.toolItems {
+		idxs = append(idxs, idx)
+	}
+	sort.Ints(idxs)
+	for _, idx := range idxs {
+		if err := e.sealTool(idx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// lastOpenTool returns the most recently opened still-open function_call
+// output_index, for argument deltas that arrive without a registered
+// upstream tool index.
+func (e *responsesStreamEncoder) lastOpenTool() (int, bool) {
+	if _, ok := e.toolItems[e.lastToolOut]; ok {
+		return e.lastToolOut, true
+	}
+	best := -1
+	for idx := range e.toolItems {
+		if idx > best {
+			best = idx
+		}
+	}
+	return best, best >= 0
 }
 
 func (e *responsesStreamEncoder) openMessageItem() error {
@@ -262,23 +332,23 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 			return err
 		}
 		e.outputIndex++
-		e.itemKind = "function_call"
-		e.toolCallID = strings.TrimSpace(ev.ToolID)
-		if e.toolCallID == "" {
-			e.toolCallID = e.nextItemID("call")
+		callID := strings.TrimSpace(ev.ToolID)
+		if callID == "" {
+			callID = e.nextItemID("call")
 		}
-		e.itemID = "fc_" + e.toolCallID
-		e.toolName = ev.ToolName
+		itemID := "fc_" + callID
+		e.toolItems[e.outputIndex] = &responsesToolItem{itemID: itemID, callID: callID, name: ev.ToolName}
 		e.toolOutput[ev.ToolIndex] = e.outputIndex
-		e.toolItemIDs[ev.ToolIndex] = e.itemID
+		e.toolItemIDs[ev.ToolIndex] = itemID
+		e.lastToolOut = e.outputIndex
 		return e.write("response.output_item.added", map[string]any{
 			"type":         "response.output_item.added",
 			"output_index": e.outputIndex,
 			"item": map[string]any{
 				"type":      "function_call",
-				"id":        e.itemID,
-				"call_id":   e.toolCallID,
-				"name":      e.toolName,
+				"id":        itemID,
+				"call_id":   callID,
+				"name":      ev.ToolName,
 				"arguments": "",
 				"status":    "in_progress",
 			},
@@ -289,27 +359,33 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 		}
 		outIdx, ok := e.toolOutput[ev.ToolIndex]
 		if !ok {
-			if e.itemKind != "function_call" {
+			// Delta without a registered tool index (a producer that never
+			// sent ToolUseStart): attribute it to the most recently opened
+			// still-open call so item_id never serializes empty.
+			outIdx, ok = e.lastOpenTool()
+			if !ok {
 				return nil
 			}
-			outIdx = e.outputIndex
 		}
-		if e.itemKind == "function_call" && outIdx == e.outputIndex {
-			e.argsBuf.WriteString(ev.PartialJSON)
+		ti := e.toolItems[outIdx]
+		if ti == nil {
+			return nil
 		}
+		ti.args.WriteString(ev.PartialJSON)
 		return e.write("response.function_call_arguments.delta", map[string]any{
 			"type":         "response.function_call_arguments.delta",
 			"output_index": outIdx,
-			"item_id":      e.toolItemIDs[ev.ToolIndex],
+			"item_id":      ti.itemID,
 			"delta":        ev.PartialJSON,
 		})
 	case messages.KindToolUseStop:
-		// Anthropic fires block stops for text blocks too; only close when the
-		// stop targets the open function_call item.
-		if e.itemKind == "function_call" && e.toolOutput[ev.ToolIndex] == e.outputIndex {
-			return e.closeItem()
+		// Anthropic fires block stops for text blocks too; only indices that
+		// opened a function_call item seal one.
+		outIdx, ok := e.toolOutput[ev.ToolIndex]
+		if !ok {
+			return nil
 		}
-		return nil
+		return e.sealTool(outIdx)
 	case messages.KindTelemetry:
 		switch strings.TrimSpace(ev.Message) {
 		case "length", "max_tokens":
@@ -333,6 +409,9 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 			return err
 		}
 		if err := e.closeItem(); err != nil {
+			return err
+		}
+		if err := e.sealAllTools(); err != nil {
 			return err
 		}
 		return e.write("response.completed", map[string]any{
@@ -365,9 +444,11 @@ func (e *responsesStreamEncoder) responseObject() map[string]any {
 		"total_tokens":         e.inputTok + e.outputTok,
 		"input_tokens_details": map[string]any{"cached_tokens": e.cacheRead},
 	}
-	output := e.doneItems
-	if output == nil {
-		output = []any{}
+	sealed := append([]responsesDoneItem(nil), e.doneItems...)
+	sort.Slice(sealed, func(i, j int) bool { return sealed[i].index < sealed[j].index })
+	output := make([]any, 0, len(sealed))
+	for _, d := range sealed {
+		output = append(output, d.item)
 	}
 	resp := map[string]any{
 		"id":         e.responseID(),
@@ -423,6 +504,9 @@ func encodeResponsesJSON(events []messages.StreamEvent, model string) ([]byte, e
 		}
 	}
 	if err := enc.closeItem(); err != nil {
+		return nil, err
+	}
+	if err := enc.sealAllTools(); err != nil {
 		return nil, err
 	}
 	return json.Marshal(enc.responseObject())

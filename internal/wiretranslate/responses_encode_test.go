@@ -189,6 +189,83 @@ func TestEncodeResponsesSSEToolCall(t *testing.T) {
 	}
 }
 
+// TestEncodeResponsesSSEInterleavedToolCalls: chat parallel_tool_calls
+// interleaves argument deltas across indices. Each call must accumulate into
+// its own buffer and seal on its own stop — a single shared buffer seals
+// truncated JSON into the first call's output_item.done.
+func TestEncodeResponsesSSEInterleavedToolCalls(t *testing.T) {
+	t.Parallel()
+	frames := encodeResponsesFixture(t, []messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindToolUseStart, ToolIndex: 0, ToolID: "call_a", ToolName: "read"},
+		{Kind: messages.KindToolUseStart, ToolIndex: 1, ToolID: "call_b", ToolName: "write"},
+		{Kind: messages.KindToolInputDelta, ToolIndex: 0, PartialJSON: `{"path":`},
+		{Kind: messages.KindToolInputDelta, ToolIndex: 1, PartialJSON: `{"path":`},
+		{Kind: messages.KindToolInputDelta, ToolIndex: 0, PartialJSON: `"a.txt"}`},
+		{Kind: messages.KindToolInputDelta, ToolIndex: 1, PartialJSON: `"b.txt"}`},
+		{Kind: messages.KindToolUseStop, ToolIndex: 0},
+		{Kind: messages.KindToolUseStop, ToolIndex: 1},
+		{Kind: messages.KindMessageStop},
+	}, "m")
+	doneByCallID := map[string]map[string]any{}
+	var completed map[string]any
+	for _, f := range frames {
+		switch f.Event {
+		case "response.output_item.done":
+			item := f.Data["item"].(map[string]any)
+			doneByCallID[item["call_id"].(string)] = item
+		case "response.completed":
+			completed = f.Data["response"].(map[string]any)
+		}
+	}
+	if len(doneByCallID) != 2 {
+		t.Fatalf("done items=%v", doneByCallID)
+	}
+	if doneByCallID["call_a"]["arguments"] != `{"path":"a.txt"}` {
+		t.Fatalf("call_a arguments=%v", doneByCallID["call_a"]["arguments"])
+	}
+	if doneByCallID["call_b"]["arguments"] != `{"path":"b.txt"}` {
+		t.Fatalf("call_b arguments=%v", doneByCallID["call_b"]["arguments"])
+	}
+	// response.completed output[] stays index-ordered.
+	output := completed["output"].([]any)
+	if len(output) != 2 {
+		t.Fatalf("output=%v", output)
+	}
+	if output[0].(map[string]any)["call_id"] != "call_a" || output[1].(map[string]any)["call_id"] != "call_b" {
+		t.Fatalf("output order=%v", output)
+	}
+}
+
+// TestEncodeResponsesSSEToolDeltaWithoutStart: an argument delta for an
+// unregistered tool index falls back to the open call so item_id never
+// serializes empty.
+func TestEncodeResponsesSSEToolDeltaWithoutStart(t *testing.T) {
+	t.Parallel()
+	frames := encodeResponsesFixture(t, []messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindToolUseStart, ToolIndex: 0, ToolID: "call_1", ToolName: "read"},
+		{Kind: messages.KindToolInputDelta, ToolIndex: 7, PartialJSON: `{"path":"x"}`},
+		{Kind: messages.KindToolUseStop, ToolIndex: 0},
+		{Kind: messages.KindMessageStop},
+	}, "m")
+	var delta, done map[string]any
+	for _, f := range frames {
+		switch f.Event {
+		case "response.function_call_arguments.delta":
+			delta = f.Data
+		case "response.output_item.done":
+			done = f.Data["item"].(map[string]any)
+		}
+	}
+	if delta["item_id"] == nil || delta["item_id"] == "" {
+		t.Fatalf("delta item_id=%v", delta["item_id"])
+	}
+	if done["arguments"] != `{"path":"x"}` {
+		t.Fatalf("assembled arguments=%v", done["arguments"])
+	}
+}
+
 func TestEncodeResponsesSSEUsageCacheRead(t *testing.T) {
 	t.Parallel()
 	frames := encodeResponsesFixture(t, []messages.StreamEvent{
