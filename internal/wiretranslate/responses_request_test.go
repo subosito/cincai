@@ -385,6 +385,80 @@ func TestResponsesToAnthropicRequestMergesToolResultsIntoOneUserMessage(t *testi
 	}
 }
 
+// TestResponsesToAnthropicRequestRollingCacheBreakpoints: a single moving
+// tail breakpoint limits cache reads to the system+tools prefix — turn N+1
+// finds no marker at turn N's position and re-processes the accumulated
+// tool body at full price. Two rolling breakpoints keep a marker on the
+// previous user turn, which is a guaranteed prefix hit.
+func TestResponsesToAnthropicRequestRollingCacheBreakpoints(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"model": "m",
+		"input": [
+			{"role": "user", "content": "read a"},
+			{"type": "function_call", "call_id": "call_1", "name": "read", "arguments": "{\"path\":\"a\"}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": "A"},
+			{"role": "user", "content": "read b"},
+			{"type": "function_call", "call_id": "call_2", "name": "read", "arguments": "{\"path\":\"b\"}"},
+			{"type": "function_call_output", "call_id": "call_2", "output": "B"}
+		]
+	}`)
+	out, err := responsesToAnthropicRequest(raw, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req map[string]any
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	msgs := req["messages"].([]any)
+	// user("read a"), assistant(tool_use), user(tool_result A + "read b"),
+	// assistant(tool_use), user(tool_result B).
+	if len(msgs) != 5 {
+		t.Fatalf("messages=%v", req["messages"])
+	}
+	marked := func(i int) bool {
+		m, _ := msgs[i].(map[string]any)
+		blocks, _ := m["content"].([]any)
+		if len(blocks) == 0 {
+			return false
+		}
+		last, _ := blocks[len(blocks)-1].(map[string]any)
+		_, ok := last["cache_control"]
+		return ok
+	}
+	if !marked(4) {
+		t.Fatalf("last user turn unmarked: %v", msgs[4])
+	}
+	if !marked(2) {
+		t.Fatalf("previous user turn lost its breakpoint: %v", msgs[2])
+	}
+	if marked(0) {
+		t.Fatalf("third-oldest user turn must age out of the rolling window: %v", msgs[0])
+	}
+}
+
+// TestMarkLastUserBlocksSkipsMalformedMessages: a user message without
+// block-form content is skipped, not fatal — one odd message must not
+// disable caching for the whole conversation.
+func TestMarkLastUserBlocksSkipsMalformedMessages(t *testing.T) {
+	t.Parallel()
+	msgs := []map[string]any{
+		{"role": "user", "content": []map[string]any{{"type": "text", "text": "first"}}},
+		{"role": "user", "content": "not-blocks"},
+		{"role": "user", "content": []map[string]any{{"type": "text", "text": "last"}}},
+	}
+	markLastUserBlocks(msgs, 2)
+	first := msgs[0]["content"].([]map[string]any)
+	last := msgs[2]["content"].([]map[string]any)
+	if _, ok := last[0]["cache_control"]; !ok {
+		t.Fatalf("last user block unmarked: %v", last)
+	}
+	if _, ok := first[0]["cache_control"]; !ok {
+		t.Fatalf("walk aborted at the malformed message: %v", first)
+	}
+}
+
 func TestResponsesToAnthropicRequestThinkingBudgetLadder(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

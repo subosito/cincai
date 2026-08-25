@@ -132,8 +132,9 @@ func responsesInputToOpenAI(req *responsesRequest) ([]openaiMessage, error) {
 // canonical positions (docs/responses-ingress.md §1):
 //
 //   - final tool definition and final system block (the static prefix), and
-//   - the final block of the last user message when the conversation has
-//     tool history (the tool use + tool result tail).
+//   - the final block of the last two user messages when the conversation
+//     has tool history (two rolling breakpoints, so the previous turn's
+//     position still carries a marker on the next turn).
 //
 // Without these markers Anthropic re-processes the full prefix every turn and
 // reports zero cache_read tokens.
@@ -153,6 +154,13 @@ func responsesToAnthropicRequest(raw []byte, upstreamModel string) ([]byte, erro
 	maxTokens := req.MaxOutputTokens
 	if maxTokens == 0 {
 		maxTokens = 4096
+	}
+	// Breakpoint (b): two rolling user-turn breakpoints when tool history
+	// exists. Mark before building out: the blocks are reference types, but
+	// a future refactor that deep-copies msgs into out would otherwise drop
+	// the markers silently.
+	if toolHistory {
+		markLastUserBlocks(msgs, 2)
 	}
 	out := map[string]any{
 		"model":      model,
@@ -180,10 +188,6 @@ func responsesToAnthropicRequest(raw []byte, upstreamModel string) ([]byte, erro
 	if len(system) > 0 {
 		system[len(system)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
 		out["system"] = system
-	}
-	// Breakpoint (b): end of the last user turn when tool history exists.
-	if toolHistory {
-		markLastUserBlock(msgs)
 	}
 	if effort := req.effort(); effort != "" {
 		if budget := thinkingBudgetTokens(effort); budget > 0 {
@@ -272,19 +276,26 @@ func responsesInputToAnthropic(req *responsesRequest) (system []map[string]any, 
 	return system, msgs, toolHistory, nil
 }
 
-// markLastUserBlock sets cache_control on the final content block of the last
-// user message.
-func markLastUserBlock(msgs []map[string]any) {
-	for i := len(msgs) - 1; i >= 0; i-- {
+// markLastUserBlocks sets cache_control on the final content block of the
+// last n user messages. Two rolling breakpoints keep a marker at the
+// previous turn's position: Anthropic reads the longest prefix match among
+// the breakpoints in the current request, so a single moving tail
+// breakpoint would limit cache reads to the system+tools prefix and
+// re-process the accumulated tool-use/tool-result body at full price every
+// turn. A user message without block-form content is skipped rather than
+// aborting the walk, so one odd message cannot disable caching entirely.
+func markLastUserBlocks(msgs []map[string]any, n int) {
+	marked := 0
+	for i := len(msgs) - 1; i >= 0 && marked < n; i-- {
 		if msgs[i]["role"] != "user" {
 			continue
 		}
 		blocks, ok := msgs[i]["content"].([]map[string]any)
 		if !ok || len(blocks) == 0 {
-			return
+			continue
 		}
 		blocks[len(blocks)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
-		return
+		marked++
 	}
 }
 
