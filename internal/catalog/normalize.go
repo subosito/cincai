@@ -186,6 +186,11 @@ func cincaiModality(name string) string {
 	switch strings.TrimSpace(name) {
 	case "chat":
 		return "chat"
+	// openai-responses ingress wire (translated to chat/anthropic by
+	// wire-translate r2o/r2a). Stays a distinct modality key so a model
+	// can carry both chat and responses routes on the same provider.
+	case "responses":
+		return "responses"
 	// Second chat path on a different wire (e.g. openai-chat-completions
 	// alongside openai-responses for the same model id). Stays nested on the
 	// bare id because expand only facets same-wire collisions.
