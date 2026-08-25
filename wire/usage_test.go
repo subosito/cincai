@@ -54,6 +54,20 @@ func TestOpenAIResponsesAPI_inputOutputKeys(t *testing.T) {
 	}
 }
 
+// The r2o/r2a translators emit response.completed with usage nested under
+// "response"; the meter must read it (docs/responses-ingress.md §5).
+func TestOpenAIResponsesAPI_streamCompletedFrame(t *testing.T) {
+	m := usageMeterFor(catalog.WireOpenAIResponses)
+	u := feed(m,
+		"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\n",
+		"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"hi\"}\n\n",
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"usage\":{\"input_tokens\":100,\"output_tokens\":20,\"input_tokens_details\":{\"cached_tokens\":80}}}}\n\n",
+	)
+	if u.InputTokens != 100 || u.OutputTokens != 20 || u.CacheReadTokens != 80 {
+		t.Fatalf("usage = %+v, want in=100 out=20 cacheRead=80", u)
+	}
+}
+
 func TestAnthropic_nonStream(t *testing.T) {
 	m := usageMeterFor(catalog.WireAnthropicMsg)
 	u := feed(m, `{"type":"message","usage":{"input_tokens":100,"output_tokens":25}}`)

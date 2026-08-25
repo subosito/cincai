@@ -108,6 +108,94 @@ models:
 	}
 }
 
+func TestApplyWireTranslateResponsesIngress(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		upstreamProtocol string
+		wantAdapter      string
+	}{
+		{"chat upstream", "openai-chat-completions", AdapterWireTranslateR2O},
+		{"compat chat upstream", "openai-compat-chat", AdapterWireTranslateR2O},
+		{"anthropic upstream", "anthropic-messages", AdapterWireTranslateR2A},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := corecatalog.Document{
+				Providers: map[string]corecatalog.Provider{
+					"up": {
+						CredentialProfile: "up",
+						Surfaces: map[string]corecatalog.Surface{
+							"chat": {Protocol: tc.upstreamProtocol, BaseURL: "http://up/v1"},
+						},
+					},
+				},
+				Models: map[string]corecatalog.Model{
+					"m": {
+						Modalities: map[string]corecatalog.Modality{
+							"chat": {
+								Wire: corecatalog.WireOpenAIResponses,
+								Providers: []corecatalog.PoolEntry{{
+									ProviderRef: "up",
+									Surface:     "chat",
+									Model:       "upstream/model",
+								}},
+							},
+						},
+					},
+				},
+			}
+			applyWireTranslate(&doc)
+			entry := doc.Models["m"].Modalities["chat"].Providers[0]
+			if entry.Surface != wireTranslateSurfacePrefix+tc.wantAdapter {
+				t.Fatalf("surface=%q", entry.Surface)
+			}
+			cat, err := corecatalog.NewFromDocument(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := cat.Resolve("m", corecatalog.WireOpenAIResponses)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Targets[0].Adapter != tc.wantAdapter {
+				t.Fatalf("adapter=%q want %q", plan.Targets[0].Adapter, tc.wantAdapter)
+			}
+		})
+	}
+}
+
+// A responses-native upstream (protocol openai-responses) stays passthrough.
+func TestApplyWireTranslateResponsesPassthroughUntouched(t *testing.T) {
+	doc := corecatalog.Document{
+		Providers: map[string]corecatalog.Provider{
+			"xai": {
+				CredentialProfile: "xai",
+				Surfaces: map[string]corecatalog.Surface{
+					"responses": {Protocol: "openai-responses", BaseURL: "https://api.x.ai/v1"},
+				},
+			},
+		},
+		Models: map[string]corecatalog.Model{
+			"m": {
+				Modalities: map[string]corecatalog.Modality{
+					"chat": {
+						Wire: corecatalog.WireOpenAIResponses,
+						Providers: []corecatalog.PoolEntry{{
+							ProviderRef: "xai",
+							Surface:     "responses",
+							Model:       "grok-4.6",
+						}},
+					},
+				},
+			},
+		},
+	}
+	applyWireTranslate(&doc)
+	entry := doc.Models["m"].Modalities["chat"].Providers[0]
+	if entry.Surface != "responses" {
+		t.Fatalf("surface=%q — passthrough surface must not be rewritten", entry.Surface)
+	}
+}
+
 func TestLoadWireTranslate(t *testing.T) {
 	raw := `
 providers:
