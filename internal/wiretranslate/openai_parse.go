@@ -195,7 +195,8 @@ func openAINonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 		}
 		events = append(events, messages.StreamEvent{Kind: messages.KindTelemetry, Message: resp.Choices[0].FinishReason})
 	}
-	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
+	// Usage precedes MessageStop (the KindUsage contract): encoders that
+	// assemble the terminal frame on stop read token counts at that moment.
 	cacheRead := 0
 	if resp.Usage.PromptTokensDetails != nil {
 		cacheRead = resp.Usage.PromptTokensDetails.CachedTokens
@@ -211,5 +212,6 @@ func openAINonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 			CacheReadTokens: cacheRead,
 		})
 	}
+	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
 	return events, nil
 }

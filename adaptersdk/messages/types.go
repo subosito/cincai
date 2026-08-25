@@ -19,6 +19,10 @@ const (
 	KindCompactBoundary
 	KindAPIRetry
 	KindAPIError
+	// KindUsage must precede KindMessageStop in a producer's event stream:
+	// encoders that assemble the terminal frame on stop (chat completed,
+	// responses completed) read token counts at that moment, so usage
+	// appended after stop encodes zero tokens on the live SSE path.
 	KindUsage
 	KindTelemetry
 	KindMessageStart

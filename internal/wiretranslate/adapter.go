@@ -278,7 +278,7 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 	}
 	var events []messages.StreamEvent
 	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStart, MessageID: msg.ID, Model: msg.Model})
-	for _, b := range msg.Content {
+	for i, b := range msg.Content {
 		switch b.Type {
 		case "text":
 			if strings.TrimSpace(b.Text) != "" {
@@ -289,15 +289,18 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 			if args == "" {
 				args = "{}"
 			}
+			// ToolIndex is the content-block index: per-index argument
+			// buffering makes parallel calls sharing index 0 collide.
 			events = append(events,
-				messages.StreamEvent{Kind: messages.KindToolUseStart, ToolID: b.ID, ToolName: b.Name},
-				messages.StreamEvent{Kind: messages.KindToolInputDelta, PartialJSON: args},
-				messages.StreamEvent{Kind: messages.KindToolUseStop},
+				messages.StreamEvent{Kind: messages.KindToolUseStart, ToolIndex: i, ToolID: b.ID, ToolName: b.Name},
+				messages.StreamEvent{Kind: messages.KindToolInputDelta, ToolIndex: i, PartialJSON: args},
+				messages.StreamEvent{Kind: messages.KindToolUseStop, ToolIndex: i},
 			)
 		}
 	}
 	events = append(events, messages.StreamEvent{Kind: messages.KindTelemetry, Message: msg.StopReason})
-	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
+	// Usage precedes MessageStop (the KindUsage contract): encoders that
+	// assemble the terminal frame on stop read token counts at that moment.
 	u := msg.Usage
 	if u.InputTokens > 0 || u.OutputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
 		events = append(events, messages.StreamEvent{
@@ -308,6 +311,7 @@ func anthropicNonStreamToEvents(raw []byte) ([]messages.StreamEvent, error) {
 			CacheWriteTokens: u.CacheCreationInputTokens,
 		})
 	}
+	events = append(events, messages.StreamEvent{Kind: messages.KindMessageStop})
 	return events, nil
 }
 

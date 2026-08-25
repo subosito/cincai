@@ -166,6 +166,93 @@ func TestEncodeResponsesSSEUsageDetailsAlwaysEmitted(t *testing.T) {
 	}
 }
 
+// TestNonStreamToEventsUsageBeforeStop: the KindUsage contract requires
+// usage to precede MessageStop — encoders that assemble the terminal frame
+// on stop (chat completed, responses completed) read token counts at that
+// moment, so usage appended after stop encodes zero tokens on the live SSE
+// path.
+func TestNonStreamToEventsUsageBeforeStop(t *testing.T) {
+	t.Parallel()
+	assertUsageBeforeStop := func(t *testing.T, evs []messages.StreamEvent) {
+		t.Helper()
+		usageIdx, stopIdx := -1, -1
+		for i, ev := range evs {
+			switch ev.Kind {
+			case messages.KindUsage:
+				usageIdx = i
+			case messages.KindMessageStop:
+				stopIdx = i
+			}
+		}
+		if usageIdx < 0 || stopIdx < 0 {
+			t.Fatalf("events=%+v", evs)
+		}
+		if usageIdx > stopIdx {
+			t.Fatalf("usage (index %d) after message stop (index %d)", usageIdx, stopIdx)
+		}
+	}
+
+	t.Run("anthropic", func(t *testing.T) {
+		t.Parallel()
+		evs, err := anthropicNonStreamToEvents([]byte(`{
+		  "id":"msg_1","model":"claude","stop_reason":"end_turn",
+		  "content":[{"type":"text","text":"hi"}],
+		  "usage":{"input_tokens":20,"output_tokens":2}
+		}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertUsageBeforeStop(t, evs)
+	})
+	t.Run("openai", func(t *testing.T) {
+		t.Parallel()
+		evs, err := openAINonStreamToEvents([]byte(`{
+		  "id":"chatcmpl-1","model":"gpt-test",
+		  "choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],
+		  "usage":{"prompt_tokens":20,"completion_tokens":2}
+		}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertUsageBeforeStop(t, evs)
+	})
+}
+
+// TestAnthropicNonStreamToEventsToolIndex: tool_use blocks must carry their
+// content-block index — with per-index argument buffering, parallel calls
+// sharing index 0 collide and overwrite each other.
+func TestAnthropicNonStreamToEventsToolIndex(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+	  "id":"msg_1","model":"claude","stop_reason":"tool_use",
+	  "content":[
+	    {"type":"text","text":"reading both"},
+	    {"type":"tool_use","id":"toolu_1","name":"read","input":{"path":"a"}},
+	    {"type":"tool_use","id":"toolu_2","name":"read","input":{"path":"b"}}
+	  ],
+	  "usage":{"input_tokens":10,"output_tokens":5}
+	}`)
+	evs, err := anthropicNonStreamToEvents(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var starts []messages.StreamEvent
+	for _, ev := range evs {
+		if ev.Kind == messages.KindToolUseStart {
+			starts = append(starts, ev)
+		}
+	}
+	if len(starts) != 2 {
+		t.Fatalf("tool starts=%+v", starts)
+	}
+	if starts[0].ToolIndex != 1 || starts[1].ToolIndex != 2 {
+		t.Fatalf("tool indices=%d,%d want 1,2", starts[0].ToolIndex, starts[1].ToolIndex)
+	}
+	if starts[0].ToolID != "toolu_1" || starts[1].ToolID != "toolu_2" {
+		t.Fatalf("tool ids=%+v", starts)
+	}
+}
+
 func TestParseOpenAIChunk_cacheRead(t *testing.T) {
 	t.Parallel()
 	active := map[int]bool{}
