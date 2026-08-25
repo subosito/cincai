@@ -17,8 +17,9 @@ import (
 )
 
 // DefaultSkew renews a token this long before it actually expires, absorbing
-// clock skew and request latency.
-const DefaultSkew = 60 * time.Second
+// clock skew and request latency. Google OAuth tokens expire after 1h, so a
+// 5-minute buffer ensures tokens are proactively refreshed before expiration.
+const DefaultSkew = 5 * time.Minute
 
 // refreshFunc renews OAuth material for a profile. Defaults to the vendor registry.
 type refreshFunc func(ctx context.Context, profile string, cur store.Material) (store.Material, error)
