@@ -43,7 +43,7 @@ type responsesInputItem struct {
 	CallID    string          `json:"call_id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Arguments string          `json:"arguments,omitempty"`
-	Output    string          `json:"output,omitempty"`
+	Output    json.RawMessage `json:"output,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
 }
 
@@ -104,6 +104,27 @@ func (it responsesInputItem) messageRole() string {
 // to plain text. Multimodal parts are out of scope for v1.
 func (it responsesInputItem) contentText() string {
 	return responsesContentText(it.Content)
+}
+
+// outputText flattens a function_call_output's output. The Responses API
+// permits a plain string, an array of content parts, or an error-shaped
+// object; a typed string field hard-400s the whole request on the array
+// form current SDKs emit for non-text tool results.
+func (it responsesInputItem) outputText() string {
+	raw := it.Output
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	if raw[0] == '[' {
+		return responsesContentText(raw)
+	}
+	// Object form (e.g. an error payload): keep the raw JSON so the tool
+	// result round-trips instead of being dropped.
+	return string(raw)
 }
 
 func responsesContentText(raw json.RawMessage) string {

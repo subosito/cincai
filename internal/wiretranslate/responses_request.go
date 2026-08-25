@@ -112,7 +112,7 @@ func responsesInputToOpenAI(req *responsesRequest) ([]openaiMessage, error) {
 			out = append(out, openaiMessage{
 				Role:       "tool",
 				ToolCallID: strings.TrimSpace(it.CallID),
-				Content:    it.Output,
+				Content:    it.outputText(),
 			})
 		default:
 			// reasoning items and built-in tool items (web_search_call, …)
@@ -259,7 +259,7 @@ func responsesInputToAnthropic(req *responsesRequest) (system []map[string]any, 
 			appendBlock("user", map[string]any{
 				"type":        "tool_result",
 				"tool_use_id": strings.TrimSpace(it.CallID),
-				"content":     it.Output,
+				"content":     it.outputText(),
 			})
 		default:
 			// See responsesInputToOpenAI: non-replayable items are skipped.

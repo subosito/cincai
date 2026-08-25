@@ -109,6 +109,74 @@ func TestResponsesToChatRequestMergesConsecutiveFunctionCalls(t *testing.T) {
 	}
 }
 
+// TestResponsesToChatRequestToolOutputContentParts: the Responses API permits
+// function_call_output.output as an array of content parts (current SDKs emit
+// it for non-text tool results). A typed string field fails the whole request
+// decode with a 400; the flattener must produce the part text.
+func TestResponsesToChatRequestToolOutputContentParts(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"model": "m",
+		"input": [
+			{"role": "user", "content": "read foo.txt"},
+			{"type": "function_call", "call_id": "call_1", "name": "read", "arguments": "{\"path\":\"foo.txt\"}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": [{"type": "input_text", "text": "line one"}, {"type": "input_text", "text": "line two"}]}
+		]
+	}`)
+	out, err := responsesToChatRequest(raw, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req openaiChatRequest
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	toolMsg := req.Messages[2]
+	if toolMsg.Role != "tool" || toolMsg.ToolCallID != "call_1" {
+		t.Fatalf("tool message=%+v", toolMsg)
+	}
+	if toolMsg.Content != "line one\nline two" {
+		t.Fatalf("flattened output=%+v", toolMsg.Content)
+	}
+}
+
+// TestResponsesToAnthropicRequestToolOutputObject: an error-shaped object
+// output keeps its raw JSON form so the tool result round-trips instead of
+// failing the request decode.
+func TestResponsesToAnthropicRequestToolOutputObject(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"model": "m",
+		"input": [
+			{"role": "user", "content": "read foo.txt"},
+			{"type": "function_call", "call_id": "call_1", "name": "read", "arguments": "{\"path\":\"foo.txt\"}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": {"error": "permission denied"}}
+		]
+	}`)
+	out, err := responsesToAnthropicRequest(raw, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req map[string]any
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	msgs := req["messages"].([]any)
+	last := msgs[len(msgs)-1].(map[string]any)
+	result := last["content"].([]any)[0].(map[string]any)
+	if result["type"] != "tool_result" {
+		t.Fatalf("tool_result=%v", result)
+	}
+	var errPayload map[string]any
+	content, ok := result["content"].(string)
+	if !ok {
+		t.Fatalf("tool_result content=%v", result["content"])
+	}
+	if err := json.Unmarshal([]byte(content), &errPayload); err != nil || errPayload["error"] != "permission denied" {
+		t.Fatalf("tool_result content=%q err=%v", content, err)
+	}
+}
+
 func TestResponsesToChatRequestStringInput(t *testing.T) {
 	t.Parallel()
 	out, err := responsesToChatRequest([]byte(`{"model":"m","input":"hi"}`), "m")
