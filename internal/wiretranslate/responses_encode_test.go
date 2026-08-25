@@ -353,12 +353,60 @@ func TestEncodeResponsesSSEIncompleteOnLength(t *testing.T) {
 	}
 }
 
+// TestEncodeResponsesSSEAPIError: a mid-stream upstream error must surface
+// as a response.failed terminal frame — a stream that simply stops is
+// indistinguishable from a network drop and unretryable by classification.
+// Events after the failure (notably MessageStop) must not complete the
+// response.
 func TestEncodeResponsesSSEAPIError(t *testing.T) {
 	t.Parallel()
-	enc := newResponsesStreamEncoder(&strings.Builder{}, "m")
-	err := enc.WriteEvent(messages.StreamEvent{Kind: messages.KindAPIError, Message: "boom"})
-	if err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("err=%v", err)
+	frames := encodeResponsesFixture(t, []messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindTextDelta, Text: "partial"},
+		{Kind: messages.KindAPIError, Code: "server_error", Message: "boom"},
+		{Kind: messages.KindMessageStop},
+	}, "m")
+	last := frames[len(frames)-1]
+	if last.Event != "response.failed" {
+		t.Fatalf("last frame=%v", frameNames(frames))
+	}
+	resp := last.Data["response"].(map[string]any)
+	if resp["status"] != "failed" {
+		t.Fatalf("status=%v", resp["status"])
+	}
+	errObj := resp["error"].(map[string]any)
+	if errObj["code"] != "server_error" || errObj["message"] != "boom" {
+		t.Fatalf("error=%v", errObj)
+	}
+	for _, f := range frames {
+		if f.Event == "response.completed" {
+			t.Fatalf("response.completed after failure: %v", frameNames(frames))
+		}
+	}
+}
+
+// TestEncodeResponsesJSONAPIError: the non-streaming body carries the
+// failure as status:"failed" with the upstream error, not a Go error.
+func TestEncodeResponsesJSONAPIError(t *testing.T) {
+	t.Parallel()
+	raw, err := encodeResponsesJSON([]messages.StreamEvent{
+		{Kind: messages.KindMessageStart, MessageID: "resp_1", Model: "m"},
+		{Kind: messages.KindTextDelta, Text: "partial"},
+		{Kind: messages.KindAPIError, Message: "boom"},
+	}, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["status"] != "failed" {
+		t.Fatalf("status=%v", resp["status"])
+	}
+	errObj := resp["error"].(map[string]any)
+	if errObj["code"] != "server_error" || errObj["message"] != "boom" {
+		t.Fatalf("error=%v", errObj)
 	}
 }
 

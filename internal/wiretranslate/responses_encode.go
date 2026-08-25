@@ -46,6 +46,12 @@ type responsesStreamEncoder struct {
 	doneItems []responsesDoneItem
 	status    string
 
+	// failed is set once a response.failed terminal frame goes out; every
+	// later event (notably MessageStop) must not complete the response.
+	failed  bool
+	errCode string
+	errMsg  string
+
 	inputTok   int
 	outputTok  int
 	cacheRead  int
@@ -310,6 +316,10 @@ func (e *responsesStreamEncoder) openReasoningItem() error {
 }
 
 func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
+	if e.failed {
+		// response.failed is terminal: drop everything after it.
+		return nil
+	}
 	switch ev.Kind {
 	case messages.KindMessageStart:
 		if s := strings.TrimSpace(ev.MessageID); s != "" {
@@ -450,9 +460,25 @@ func (e *responsesStreamEncoder) WriteEvent(ev messages.StreamEvent) error {
 			"response": e.responseObject(),
 		})
 	case messages.KindAPIError:
-		if ev.Message != "" {
-			return fmt.Errorf("wire-translate: upstream: %s", ev.Message)
+		if ev.Message == "" {
+			return nil
 		}
+		// A mid-stream upstream error must surface as response.failed, not
+		// a stream that simply stops — a truncated stream is
+		// indistinguishable from a network drop and unretryable by
+		// classification. The pipe then closes cleanly after the terminal
+		// frame instead of aborting with a Go error.
+		e.failed = true
+		e.status = "failed"
+		e.errCode = strings.TrimSpace(ev.Code)
+		e.errMsg = ev.Message
+		if err := e.ensureCreated(); err != nil {
+			return err
+		}
+		return e.write("response.failed", map[string]any{
+			"type":     "response.failed",
+			"response": e.responseObject(),
+		})
 	}
 	return nil
 }
@@ -492,6 +518,13 @@ func (e *responsesStreamEncoder) responseObject() map[string]any {
 	}
 	if e.status == "incomplete" {
 		resp["incomplete_details"] = map[string]any{"reason": "max_output_tokens"}
+	}
+	if e.status == "failed" {
+		code := e.errCode
+		if code == "" {
+			code = "server_error"
+		}
+		resp["error"] = map[string]any{"code": code, "message": e.errMsg}
 	}
 	return resp
 }
