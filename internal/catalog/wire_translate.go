@@ -36,7 +36,12 @@ func applyWireTranslate(doc *corecatalog.Document) {
 					}
 				}
 				if s.Adapter != "" {
-					continue
+					// The original surface has its own adapter (e.g.
+					// anthropic-chat, dashscope-chat). Strip it so the
+					// wire-translate adapter takes over; the injected
+					// surface inherits the original's protocol, base_url,
+					// request_preset, and inject headers.
+					s.Adapter = ""
 				}
 				if protocolMatchesWire(s.Protocol, wire) {
 					continue
