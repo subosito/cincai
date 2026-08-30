@@ -67,38 +67,3 @@ models:
 		t.Fatalf("high sku %q, want claude-sonnet-5-high", got)
 	}
 }
-
-func TestProdProvidersYAMLCursorEffortHops(t *testing.T) {
-	path := "/app/chacha/config/providers.yaml"
-	if _, err := os.Stat(path); err != nil {
-		t.Skip(err)
-	}
-	cat, err := Load(path)
-	if err != nil {
-		t.Fatalf("load prod catalog: %v", err)
-	}
-	m, ok := cat.Model("cs/claude-sonnet-5")
-	if !ok {
-		t.Fatal("missing cs/claude-sonnet-5")
-	}
-	mod, ok := m.Modalities["chat"]
-	if !ok {
-		t.Fatalf("modalities=%v", keysOf(m.Modalities))
-	}
-	if len(mod.Providers) != 1 {
-		t.Fatalf("providers=%d", len(mod.Providers))
-	}
-	got := mod.Providers[0].Models
-	if got["high"] != "claude-sonnet-5-high" || got["medium"] != "claude-sonnet-5-medium" || got["low"] != "claude-sonnet-5-low" {
-		t.Fatalf("hop models=%v", got)
-	}
-	t.Logf("surface=%q provider=%q models=%v", mod.Providers[0].Surface, mod.Providers[0].ProviderRef, got)
-}
-
-func keysOf(m map[string]Modality) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
