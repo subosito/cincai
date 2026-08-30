@@ -47,7 +47,10 @@ type Provider struct {
 	Proxy        string             `yaml:"proxy,omitempty"`
 	Inject       map[string]string  `yaml:"inject,omitempty"`
 	InjectPreset string             `yaml:"inject_preset,omitempty"`
-	Surfaces     map[string]Surface `yaml:"surfaces"`
+	// AllowModels restricts which upstream model ids may leave this provider.
+	// Empty or omitted = allow all. Exact match on Target.UpstreamModel after effort rewrite.
+	AllowModels []string           `yaml:"allow_models,omitempty"`
+	Surfaces    map[string]Surface `yaml:"surfaces"`
 }
 
 // PoolEntry is one upstream in a model pool.
@@ -96,6 +99,22 @@ type Model struct {
 	// instead of repeating it in their own config.
 	NativeTools []map[string]any    `yaml:"native_tools,omitempty"`
 	Modalities  map[string]Modality `yaml:"modalities"`
+}
+
+// SupportsNativeTool returns true if the model declares a native tool with the given type or name.
+func (m Model) SupportsNativeTool(toolType string) bool {
+	if toolType == "" {
+		return false
+	}
+	for _, tool := range m.NativeTools {
+		if t, ok := tool["type"].(string); ok && t == toolType {
+			return true
+		}
+		if n, ok := tool["name"].(string); ok && n == toolType {
+			return true
+		}
+	}
+	return false
 }
 
 // ModelGroup is a named set of public model ids for client discovery (menus,
@@ -206,6 +225,8 @@ type Target struct {
 	Inject        map[string]string
 	InjectPreset  string
 	RequestPreset string
+	// AllowModels is copied from the provider; empty = no extra filter.
+	AllowModels []string
 }
 
 // RoutePlan is the ordered upstream attempt list for one model + wire.
@@ -411,6 +432,7 @@ func (c *Catalog) targetFromEntry(model string, entry PoolEntry, wire string) (T
 		Inject:            prov.Inject,
 		InjectPreset:      prov.InjectPreset,
 		RequestPreset:     surf.RequestPreset,
+		AllowModels:       prov.AllowModels,
 	}, nil
 }
 

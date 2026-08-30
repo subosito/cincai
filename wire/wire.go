@@ -582,6 +582,15 @@ func (e *Engine) handleWire(w http.ResponseWriter, r *http.Request, p keyring.Pr
 			}
 		}
 		recordTarget(rec, target)
+		if !target.UpstreamAllowed() {
+			msg := fmt.Sprintf("provider %q: upstream model %q not in allow_models", target.ProviderRef, target.CheckUpstreamModel())
+			if failover && i < len(plan.Targets)-1 {
+				slog.InfoContext(ctx, "allowlist skip hop", "provider_ref", target.ProviderRef, "upstream", target.CheckUpstreamModel(), "requested", model)
+				continue
+			}
+			http.Error(w, msg, http.StatusForbidden)
+			return
+		}
 		mat, err := e.Store.Get(ctx, target.CredentialProfile)
 		if err != nil {
 			slog.ErrorContext(ctx, "upstream credential", "profile", target.CredentialProfile, "provider_ref", target.ProviderRef, "err", err)
