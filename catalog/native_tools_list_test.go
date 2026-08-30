@@ -53,11 +53,24 @@ func TestModelsListPublishesNativeTools(t *testing.T) {
 		t.Fatalf("declaration mangled: %#v", got.NativeTools[0])
 	}
 
+	if !got.SupportsNativeTool("web_search") {
+		t.Fatalf("expected SupportsNativeTool(web_search) to be true")
+	}
+	if !got.SupportsNativeTool("x_search") {
+		t.Fatalf("expected SupportsNativeTool(x_search) to be true")
+	}
+	if got.SupportsNativeTool("other") {
+		t.Fatalf("expected SupportsNativeTool(other) to be false")
+	}
+
 	// A model without the capability must not advertise one, and the key must
 	// be absent rather than null so plain clients see nothing at all.
 	plain, ok := byID["plain"]
 	if !ok {
 		t.Fatal("plain missing from list")
+	}
+	if plain.SupportsNativeTool("web_search") {
+		t.Fatalf("plain model should not support web_search")
 	}
 	if len(plain.NativeTools) != 0 {
 		t.Fatalf("plain model claims tools: %#v", plain.NativeTools)

@@ -66,6 +66,22 @@ type ModelListItem struct {
 	Groups []string `json:"groups,omitempty"`
 }
 
+// SupportsNativeTool returns true if the model list item declares a native tool with the given type or name.
+func (item ModelListItem) SupportsNativeTool(toolType string) bool {
+	if toolType == "" {
+		return false
+	}
+	for _, tool := range item.NativeTools {
+		if t, ok := tool["type"].(string); ok && t == toolType {
+			return true
+		}
+		if n, ok := tool["name"].(string); ok && n == toolType {
+			return true
+		}
+	}
+	return false
+}
+
 // ModelsListResponse is OpenAI-shaped list envelope.
 type ModelsListResponse struct {
 	Object string          `json:"object"`
