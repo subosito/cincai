@@ -291,7 +291,7 @@ func RecordIngress(ctx context.Context, rec *Recorder, status int, start time.Ti
 		corr = CorrelationIDFromContext(ctx)
 	}
 	entry := RequestLog{
-		Wire: wire, Model: rec.Model, Alias: rec.Alias, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
+		Wire: wire, Model: rec.Model, Alias: rec.Alias, Upstream: rec.Upstream, ProviderRef: rec.ProviderRef, Protocol: rec.Protocol,
 		Status: status, LatencyMs: latency.Milliseconds(), PrincipalID: rec.PrincipalID,
 		Actor: host.Actor, Session: host.Session, CorrelationID: corr, Component: host.Component,
 	}

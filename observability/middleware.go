@@ -11,7 +11,7 @@ import (
 
 // Recorder holds per-request fields populated by handlers before the outer log line.
 type Recorder struct {
-	Wire, Model, Alias, ProviderRef, Protocol, PrincipalID string
+	Wire, Model, Alias, Upstream, ProviderRef, Protocol, PrincipalID string
 	Usage                                                  Usage
 }
 

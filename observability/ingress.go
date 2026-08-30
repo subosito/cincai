@@ -15,6 +15,8 @@ type RequestLog struct {
 	// id (e.g. agent-cheap). Model is then the hop that served (gpt-5.6-luna).
 	// Empty for leaf models.
 	Alias         string `json:"alias,omitempty"`
+	// Upstream is the vendor SKU after effort remap (e.g. gemini-3.7-flash-high).
+	Upstream      string `json:"upstream,omitempty"`
 	ProviderRef   string `json:"provider_ref,omitempty"`
 	Protocol      string `json:"protocol,omitempty"`
 	Status        int    `json:"status"`
