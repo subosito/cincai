@@ -317,3 +317,8 @@ func DrainReader(ctx context.Context, r io.Reader) error {
 
 // DefaultTimeout for non-streaming posts.
 const DefaultTimeout = 120 * time.Second
+
+// ImageTimeout is the response-header wait for image generation. xAI Imagine
+// often sits ~90–120s before the first header; 120s made the first hop 502
+// while a retry then succeeded at ~97s.
+const ImageTimeout = 5 * time.Minute

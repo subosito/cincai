@@ -135,3 +135,41 @@ func TestImageHandlerForwardsXAIPathAndBody(t *testing.T) {
 		t.Fatalf("body=%v", gotBody)
 	}
 }
+
+func TestImageHandlerQualityAndWideAspect(t *testing.T) {
+	t.Parallel()
+	var gotBody map[string]any
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"b64_json":"aGk="}]}`)
+	}))
+	defer up.Close()
+
+	h := &xai.ImageHandler{}
+	body := `{"model":"grok-imagine-image-2.0","prompt":"wide desert","n":1,"aspect_ratio":"19.5:9","quality":1}`
+	resp, err := h.Forward(context.Background(), http.DefaultClient, handler.Target{
+		Target: catalog.Target{
+			BaseURL:       up.URL + "/v1/images",
+			UpstreamModel: "grok-imagine-image-2.0",
+		},
+		Material: store.Material{Kind: store.KindAPIKey, APIKey: "xai-secret"},
+	}, "/v1/images/generations", strings.NewReader(body), http.Header{"Content-Type": []string{"application/json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	if gotBody["model"] != "grok-imagine-image-2.0" {
+		t.Fatalf("model=%v", gotBody["model"])
+	}
+	if gotBody["aspect_ratio"] != "19.5:9" {
+		t.Fatalf("aspect=%v", gotBody["aspect_ratio"])
+	}
+	if gotBody["quality"] != "low" {
+		t.Fatalf("quality must be enum string, got %#v", gotBody["quality"])
+	}
+}

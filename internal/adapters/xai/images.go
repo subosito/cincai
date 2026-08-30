@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/subosito/cincai/adaptersdk/handler"
 	"github.com/subosito/cincai/observability"
@@ -28,6 +30,10 @@ type openAIImageGenerateReq struct {
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 	Resolution  string `json:"resolution,omitempty"`
 	Size        string `json:"size,omitempty"`
+	// Quality is xAI Imagine 2.0: low|medium|high (docs default 4/7 ≈ medium).
+	// Numeric 1–7 is accepted from clients and mapped. Do not send a JSON
+	// number upstream — api.x.ai rejects it ("expected value").
+	Quality any `json:"quality,omitempty"`
 }
 
 type openAIImageEditReq struct {
@@ -60,7 +66,31 @@ func (h *ImageHandler) Forward(ctx context.Context, client *http.Client, t handl
 	if err := upstreamauth.ApplyTranslated(t, req, hdr, upstreamauth.BearerDefault()); err != nil {
 		return nil, err
 	}
-	return observability.HTTPDo(ctx, client, req)
+	// Imagine 2.0 regularly takes >120s before headers. The shared relay
+	// client 502s at DefaultTimeout; use a longer hop client for this path.
+	return observability.HTTPDo(ctx, imageHTTPClient(client), req)
+}
+
+func imageHTTPClient(fallback *http.Client) *http.Client {
+	if fallback != nil {
+		if tr, ok := fallback.Transport.(*http.Transport); ok && tr != nil && tr.ResponseHeaderTimeout >= upstream.ImageTimeout {
+			return fallback
+		}
+	}
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: upstream.ImageTimeout,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	if fallback != nil {
+		if base, ok := fallback.Transport.(*http.Transport); ok && base != nil {
+			tr = base.Clone()
+			tr.ResponseHeaderTimeout = upstream.ImageTimeout
+		}
+	}
+	return &http.Client{Transport: tr}
 }
 
 func buildXAIImageBody(ingressPath string, raw []byte, model string) ([]byte, error) {
@@ -89,13 +119,11 @@ func buildXAIGenerateBody(raw []byte, model string) ([]byte, error) {
 	if n <= 0 {
 		n = 1
 	}
-	if n > 4 {
-		n = 4
+	if n > 10 {
+		n = 10
 	}
 	ar := normalizeXAIAspect(req.AspectRatio, req.Size)
-	switch ar {
-	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3":
-	default:
+	if !validXAIAspect(ar) {
 		return nil, fmt.Errorf("xai-images: invalid aspect_ratio %q", ar)
 	}
 	body := map[string]any{
@@ -105,6 +133,9 @@ func buildXAIGenerateBody(raw []byte, model string) ([]byte, error) {
 		"n":               n,
 		"response_format": "b64_json",
 		"aspect_ratio":    ar,
+	}
+	if q, ok := normalizeXAIQuality(req.Quality); ok {
+		body["quality"] = q
 	}
 	return json.Marshal(body)
 }
@@ -207,6 +238,56 @@ func imageDataURL(raw string) string {
 	return "data:image/png;base64," + raw
 }
 
+func validXAIAspect(ar string) bool {
+	switch ar {
+	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
+		"2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeXAIQuality maps client quality to xAI's enum (low|medium|high).
+// Empty / unknown is omitted so upstream keeps its default.
+func normalizeXAIQuality(v any) (string, bool) {
+	switch t := v.(type) {
+	case nil:
+		return "", false
+	case string:
+		s := strings.ToLower(strings.TrimSpace(t))
+		if s == "" {
+			return "", false
+		}
+		switch s {
+		case "low", "medium", "high":
+			return s, true
+		case "1", "2":
+			return "low", true
+		case "3", "4", "5":
+			return "medium", true
+		case "6", "7":
+			return "high", true
+		default:
+			return "", false
+		}
+	case float64:
+		n := int(t)
+		switch {
+		case n <= 0:
+			return "", false
+		case n <= 2:
+			return "low", true
+		case n <= 5:
+			return "medium", true
+		default:
+			return "high", true
+		}
+	default:
+		return "", false
+	}
+}
+
 // normalizeXAIAspect maps OpenAI-style size (e.g. 1024x1024) and explicit
 // aspect_ratio into values accepted by the xAI image API.
 func normalizeXAIAspect(aspectRatio, size string) string {
@@ -218,7 +299,8 @@ func normalizeXAIAspect(aspectRatio, size string) string {
 		return "auto"
 	}
 	switch strings.ToLower(ar) {
-	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3":
+	case "auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
+		"2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20":
 		return strings.ToLower(ar)
 	// Common OpenAI / DALL·E pixel sizes → nearest aspect.
 	case "256x256", "512x512", "1024x1024":
