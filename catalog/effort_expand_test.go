@@ -23,6 +23,28 @@ func TestIsHybridThinkingEfforts(t *testing.T) {
 	}
 }
 
+func TestStripEffortHints(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"model":"cs/gemini-3.7-flash","reasoning_effort":"high","effort":"high","reasoning":{"effort":"high"},"messages":[]}`)
+	out := catalog.StripEffortHints(raw)
+	var body map[string]any
+	if err := json.Unmarshal(out, &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["reasoning_effort"]; ok {
+		t.Fatal("reasoning_effort still set")
+	}
+	if _, ok := body["effort"]; ok {
+		t.Fatal("effort still set")
+	}
+	if _, ok := body["reasoning"]; ok {
+		t.Fatal("reasoning still set")
+	}
+	if body["model"] != "cs/gemini-3.7-flash" {
+		t.Fatalf("model=%v", body["model"])
+	}
+}
+
 func TestExpandEffortBody_hybridOn(t *testing.T) {
 	t.Parallel()
 	m := catalog.Model{Efforts: []string{"none", "on"}, DefaultEffort: "none"}

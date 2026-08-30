@@ -65,6 +65,34 @@ func ExpandEffortBody(wire string, raw []byte, effort string, m Model) ([]byte, 
 	return out, nil
 }
 
+// StripEffortHints removes client effort fields from a chat-style JSON body.
+// Use on hops that already selected an upstream SKU via models[effort] so the
+// vendor does not apply a second, independent effort mapping.
+func StripEffortHints(raw []byte) []byte {
+	if len(raw) == 0 {
+		return raw
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil || body == nil {
+		return raw
+	}
+	delete(body, "reasoning_effort")
+	delete(body, "effort")
+	if r, ok := body["reasoning"].(map[string]any); ok {
+		delete(r, "effort")
+		if len(r) == 0 {
+			delete(body, "reasoning")
+		} else {
+			body["reasoning"] = r
+		}
+	}
+	out, err := json.Marshal(body)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 func expandHybridThinking(wire string, body map[string]any, on bool) {
 	// Never set reasoning_effort to hybrid labels "on"/"none" — many hosts
 	// validate a fixed enum (Qwen 3.8, etc.) and return 400.

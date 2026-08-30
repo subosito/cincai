@@ -84,6 +84,17 @@ func normalizeCapabilitiesProvider(entry map[string]any) (map[string]any, bool) 
 	if proxy := fields.String(entry["proxy"]); proxy != "" {
 		out["proxy"] = proxy
 	}
+	if allow, ok := entry["allow_models"].([]any); ok && len(allow) > 0 {
+		list := make([]any, 0, len(allow))
+		for _, item := range allow {
+			if s := fields.String(item); s != "" {
+				list = append(list, s)
+			}
+		}
+		if len(list) > 0 {
+			out["allow_models"] = list
+		}
+	}
 	CopyInjectFields(entry, out)
 	surfaces := make(map[string]any, len(caps))
 	for capName, raw := range caps {

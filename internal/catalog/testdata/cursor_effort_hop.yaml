@@ -1,0 +1,24 @@
+providers:
+  cursor:
+    credential_profile: cursor-oauth
+    capabilities:
+      chat:
+        adapter: cursor
+        base_url: https://api2.cursor.sh
+
+models:
+  cs/gemini-3.7-flash:
+    efforts: [low, medium, high]
+    default_effort: high
+    modalities:
+      chat:
+        wire: openai-chat-completions
+        provider_ref: cursor
+        models:
+          - model: gemini-3.7-flash-low
+            effort: low
+          - model: gemini-3.7-flash-medium
+            effort: medium
+          - model: gemini-3.7-flash-high
+            effort: high
+        surface: chat

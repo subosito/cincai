@@ -70,7 +70,7 @@ func TestApplyEffort_publicIdEndingWithEffortTier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	used, err := cat.ApplyEffort("qwen3.8-max", "medium", plan.Targets)
+	used, _, err := cat.ApplyEffort("qwen3.8-max", "medium", plan.Targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,12 +109,12 @@ func TestApplyEffort_publicIdEndingWithEffortTier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cat.ApplyEffort("qwen3.8-max:image", "medium", planImg.Targets)
+	_, nextImg, err := cat.ApplyEffort("qwen3.8-max:image", "medium", planImg.Targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if planImg.Targets[0].UpstreamModel != "qwen3.8-max" {
-		t.Fatalf("facet must not rewrite SKU, got %q", planImg.Targets[0].UpstreamModel)
+	if len(nextImg) != 1 || nextImg[0].UpstreamModel != "qwen3.8-max" {
+		t.Fatalf("facet must not rewrite SKU, got %+v", nextImg)
 	}
 }
 
@@ -160,15 +160,15 @@ func TestApplyEffort_bodyOnlyNoSKURewrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	used, err := cat.ApplyEffort("gpt-5.5", "xhigh", plan.Targets)
+	used, next, err := cat.ApplyEffort("gpt-5.5", "xhigh", plan.Targets)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if used != "xhigh" {
 		t.Fatalf("used=%q", used)
 	}
-	if plan.Targets[0].UpstreamModel != "gpt-5.5" {
-		t.Fatalf("body-only model must not rewrite SKU, got %q", plan.Targets[0].UpstreamModel)
+	if len(next) != 1 || next[0].UpstreamModel != "gpt-5.5" {
+		t.Fatalf("body-only model must not rewrite SKU, got %+v", next)
 	}
 	list := cat.ListModels()
 	if len(list.Data) != 1 || len(list.Data[0].Efforts) != 5 || list.Data[0].DefaultEffort != "medium" {
@@ -211,25 +211,25 @@ func TestApplyEffort_rewritesTierSuffix(t *testing.T) {
 		t.Fatal(err)
 	}
 	// empty → default medium (pool already medium)
-	used, err := cat.ApplyEffort("example-model", "", plan.Targets)
+	used, next, err := cat.ApplyEffort("example-model", "", plan.Targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if used != "medium" || plan.Targets[0].UpstreamModel != "example-model-medium" {
-		t.Fatalf("used=%q upstream=%q", used, plan.Targets[0].UpstreamModel)
+	if used != "medium" || len(next) != 1 || next[0].UpstreamModel != "example-model-medium" {
+		t.Fatalf("used=%q next=%+v", used, next)
 	}
 
 	plan, _ = cat.Resolve("example-model", catalog.WireOpenAIChat)
-	used, err = cat.ApplyEffort("example-model", "HIGH", plan.Targets)
+	used, next, err = cat.ApplyEffort("example-model", "HIGH", plan.Targets)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if used != "high" || plan.Targets[0].UpstreamModel != "example-model-high" {
-		t.Fatalf("used=%q upstream=%q", used, plan.Targets[0].UpstreamModel)
+	if used != "high" || len(next) != 1 || next[0].UpstreamModel != "example-model-high" {
+		t.Fatalf("used=%q next=%+v", used, next)
 	}
 
 	plan, _ = cat.Resolve("example-model", catalog.WireOpenAIChat)
-	if _, err := cat.ApplyEffort("example-model", "banana", plan.Targets); err == nil {
+	if _, _, err := cat.ApplyEffort("example-model", "banana", plan.Targets); err == nil {
 		t.Fatal("want error for unsupported effort")
 	}
 }
@@ -268,7 +268,7 @@ func TestApplyEffort_leavesForeignUpstream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cat.ApplyEffort("example-model", "high", plan.Targets); err != nil {
+	if _, _, err := cat.ApplyEffort("example-model", "high", plan.Targets); err != nil {
 		t.Fatal(err)
 	}
 	if plan.Targets[0].UpstreamModel != "vendor/example-model" {
@@ -334,3 +334,234 @@ func TestValidateEffortConfig(t *testing.T) {
 		t.Fatal("want error: default without efforts")
 	}
 }
+
+func TestApplyEffort_cursorSKUTierRewrite(t *testing.T) {
+	t.Parallel()
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"cursor": {
+				CredentialProfile: "cursor",
+				Surfaces: map[string]catalog.Surface{
+					"chat": {Protocol: "adapter:cursor", BaseURL: "https://example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"kimi-k3": {
+				Efforts:       []string{"low", "high", "max"},
+				DefaultEffort: "max",
+				Modalities: map[string]catalog.Modality{
+					"chat": {
+						Wire: catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{
+							{
+								ProviderRef: "cursor",
+								Surface:     "chat",
+								Model:       "kimi-k3-max",
+								Models: map[string]string{
+									"low":  "kimi-k3-low",
+									"high": "kimi-k3-high",
+									"max":  "kimi-k3-max",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := cat.Resolve("kimi-k3", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	used, next, err := cat.ApplyEffort("kimi-k3", "high", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "high" {
+		t.Fatalf("used=%q", used)
+	}
+	if len(next) != 1 || next[0].UpstreamModel != "kimi-k3-high" {
+		t.Fatalf("upstream=%+v want kimi-k3-high", next)
+	}
+	used, next, err = cat.ApplyEffort("kimi-k3", "", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "max" || len(next) != 1 || next[0].UpstreamModel != "kimi-k3-max" {
+		t.Fatalf("default effort used=%q next=%+v", used, next)
+	}
+}
+
+func TestApplyEffort_explicitMapBeatsSuffix(t *testing.T) {
+	t.Parallel()
+	// Map wins even when the pool SKU stem would not suffix-swap to this name.
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"cursor": {
+				CredentialProfile: "cursor",
+				Surfaces: map[string]catalog.Surface{
+					"chat": {Protocol: "adapter:cursor", BaseURL: "https://example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"glm-5.2": {
+				Efforts:       []string{"high", "max"},
+				DefaultEffort: "max",
+				Modalities: map[string]catalog.Modality{
+					"chat": {
+						Wire: catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{
+							{
+								ProviderRef: "cursor",
+								Surface:     "chat",
+								Models: map[string]string{
+									"high": "glm-5.2-high",
+									"max":  "glm-5.2-max",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.ValidateEffortConfig("glm-5.2", doc.Models["glm-5.2"]); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := cat.Resolve("glm-5.2", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	used, next, err := cat.ApplyEffort("glm-5.2", "high", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "high" || len(next) != 1 || next[0].UpstreamModel != "glm-5.2-high" {
+		t.Fatalf("used=%q next=%+v", used, next)
+	}
+}
+
+func TestValidateEffortConfig_hopModelsKeysMustBeInEfforts(t *testing.T) {
+	t.Parallel()
+	err := catalog.ValidateEffortConfig("m", catalog.Model{
+		Efforts:       []string{"high", "max"},
+		DefaultEffort: "max",
+		Modalities: map[string]catalog.Modality{
+			"chat": {
+				Providers: []catalog.PoolEntry{
+					{
+						ProviderRef: "cursor",
+						Models:      map[string]string{"banana": "m-banana"},
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("want error: hop models key not in efforts")
+	}
+}
+
+func TestValidateEffortConfig_modelAndModelsMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	err := catalog.ValidateEffortConfig("m", catalog.Model{
+		Efforts:       []string{"high", "max"},
+		DefaultEffort: "max",
+		Modalities: map[string]catalog.Modality{
+			"chat": {
+				Providers: []catalog.PoolEntry{
+					{
+						ProviderRef: "cursor",
+						Model:       "m-max",
+						Models:      map[string]string{"high": "m-high", "max": "m-max"},
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("want error: hop model and models are mutually exclusive")
+	}
+}
+
+func TestValidateEffortConfig_hopModelsMustCoverEfforts(t *testing.T) {
+	t.Parallel()
+	err := catalog.ValidateEffortConfig("m", catalog.Model{
+		Efforts:       []string{"high", "max"},
+		DefaultEffort: "max",
+		Modalities: map[string]catalog.Modality{
+			"chat": {
+				Providers: []catalog.PoolEntry{
+					{ProviderRef: "cursor", Models: map[string]string{"max": "m-max"}},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("want error: hop models missing high")
+	}
+}
+
+func TestApplyEffort_defaultEffortIsFirstWhenOmitted(t *testing.T) {
+	t.Parallel()
+	doc := catalog.Document{
+		Providers: map[string]catalog.Provider{
+			"cursor": {
+				CredentialProfile: "cursor",
+				Surfaces: map[string]catalog.Surface{
+					"chat": {Protocol: "adapter:cursor", BaseURL: "https://example"},
+				},
+			},
+		},
+		Models: map[string]catalog.Model{
+			"kimi-k3": {
+				Efforts: []string{"low", "high", "max"},
+				Modalities: map[string]catalog.Modality{
+					"chat": {
+						Wire: catalog.WireOpenAIChat,
+						Providers: []catalog.PoolEntry{
+							{
+								ProviderRef: "cursor",
+								Surface:     "chat",
+								Models: map[string]string{
+									"low":  "kimi-k3-low",
+									"high": "kimi-k3-high",
+									"max":  "kimi-k3-max",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	cat, err := catalog.NewFromDocument(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := cat.Resolve("kimi-k3", catalog.WireOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Targets[0].UpstreamModel != "kimi-k3-low" {
+		t.Fatalf("resolve default sku=%q want kimi-k3-low", plan.Targets[0].UpstreamModel)
+	}
+	used, next, err := cat.ApplyEffort("kimi-k3", "", plan.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used != "low" || next[0].UpstreamModel != "kimi-k3-low" {
+		t.Fatalf("used=%q next=%+v", used, next)
+	}
+}
+

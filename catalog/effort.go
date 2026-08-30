@@ -39,42 +39,61 @@ func EffortFromBody(raw []byte) string {
 //
 // Rules:
 //   - no Efforts → no-op
-//   - effort empty → DefaultEffort (if set); still no-op if both empty
+//   - effort empty / default / auto → DefaultEffort, else first Efforts entry
 //   - effort must be in Efforts
-//   - SKU rewrite only when pool upstream already ends with a listed -{tier}
+//   - if a hop has Models, UpstreamModel is models[effort] (error if missing)
+//   - else SKU rewrite only when the pool upstream already ends with a listed -{tier}
 //   - lean / foreign upstream ids are left alone (body carries effort)
 //
-// Returns the effort actually used (may be default) and a non-nil error when
-// the client requested an unsupported effort.
-func (c *Catalog) ApplyEffort(model, effort string, targets []Target) (used string, err error) {
+// Returns the effort actually used (may be default), the (mutated) target
+// list, and a non-nil error when the client requested an unsupported effort.
+func (c *Catalog) ApplyEffort(model, effort string, targets []Target) (used string, next []Target, err error) {
 	if c == nil {
-		return "", nil
+		return "", targets, nil
 	}
 	m, ok := c.doc.Models[model]
 	if !ok {
-		return "", nil
+		return "", targets, nil
 	}
 	return applyEffort(model, m, effort, targets)
 }
 
-func applyEffort(publicID string, m Model, effort string, targets []Target) (string, error) {
+func applyEffort(publicID string, m Model, effort string, targets []Target) (string, []Target, error) {
 	if len(m.Efforts) == 0 {
-		return "", nil
+		return "", targets, nil
 	}
 	effort = strings.ToLower(strings.TrimSpace(effort))
 	if effort == "" || effort == "default" || effort == "auto" {
-		effort = strings.ToLower(strings.TrimSpace(m.DefaultEffort))
+		effort = resolvedDefaultEffort(m)
 	}
 	if effort == "" {
-		return "", nil
+		return "", targets, nil
 	}
 	if !effortAllowed(m, effort) {
-		return "", fmt.Errorf("unsupported effort %q for model (want %s)", effort, strings.Join(normalizedEfforts(m), "|"))
+		return "", nil, fmt.Errorf("unsupported effort %q for model (want %s)", effort, strings.Join(normalizedEfforts(m), "|"))
 	}
 	for i := range targets {
+		if len(targets[i].EffortModels) > 0 {
+			sku, ok := lookupHopEffortModel(targets[i].EffortModels, effort)
+			if !ok {
+				return "", nil, fmt.Errorf("no hop models[%q] for model", effort)
+			}
+			targets[i].UpstreamModel = sku
+			continue
+		}
 		targets[i].UpstreamModel = rewriteEffortUpstream(publicID, targets[i].UpstreamModel, effort, m.Efforts)
 	}
-	return effort, nil
+	return effort, targets, nil
+}
+
+func resolvedDefaultEffort(m Model) string {
+	if def := strings.ToLower(strings.TrimSpace(m.DefaultEffort)); def != "" {
+		return def
+	}
+	if len(m.Efforts) == 0 {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(m.Efforts[0]))
 }
 
 // rewriteEffortUpstream maps a pool upstream id to the tier for effort.
@@ -129,6 +148,21 @@ func effortAllowed(m Model, effort string) bool {
 	return false
 }
 
+func lookupHopEffortModel(models map[string]string, effort string) (string, bool) {
+	if len(models) == 0 {
+		return "", false
+	}
+	for k, v := range models {
+		if !strings.EqualFold(strings.TrimSpace(k), effort) {
+			continue
+		}
+		sku := strings.TrimSpace(v)
+		return sku, sku != ""
+	}
+	return "", false
+}
+
+
 func normalizedEfforts(m Model) []string {
 	out := make([]string, 0, len(m.Efforts))
 	for _, e := range m.Efforts {
@@ -161,6 +195,43 @@ func ValidateEffortConfig(modelID string, m Model) error {
 	def := strings.TrimSpace(m.DefaultEffort)
 	if def != "" && !effortAllowed(m, def) {
 		return fmt.Errorf("models.%s: default_effort %q not in efforts", modelID, m.DefaultEffort)
+	}
+	return validateEffortHops(modelID, m)
+}
+
+// validateEffortHops checks PoolEntry.Models.
+// When models is set, model is forbidden (SKU is models[default_effort]).
+// Keys must be advertised efforts; every advertised effort must have a SKU.
+func validateEffortHops(modelID string, m Model) error {
+	for _, mod := range m.Modalities {
+		for _, e := range mod.Providers {
+			if len(e.Models) == 0 {
+				continue
+			}
+			if strings.TrimSpace(e.Model) != "" {
+				return fmt.Errorf("models.%s: hop model and models are mutually exclusive", modelID)
+			}
+			seen := map[string]string{}
+			for k, v := range e.Models {
+				key := strings.ToLower(strings.TrimSpace(k))
+				sku := strings.TrimSpace(v)
+				if key == "" || sku == "" {
+					return fmt.Errorf("models.%s: empty hop models entry", modelID)
+				}
+				if !effortAllowed(m, key) {
+					return fmt.Errorf("models.%s: hop models key %q not in efforts", modelID, k)
+				}
+				if prev, ok := seen[key]; ok && prev != sku {
+					return fmt.Errorf("models.%s: duplicate hop models key %q", modelID, k)
+				}
+				seen[key] = sku
+			}
+			for _, want := range normalizedEfforts(m) {
+				if _, ok := seen[want]; !ok {
+					return fmt.Errorf("models.%s: hop models missing key %q", modelID, want)
+				}
+			}
+		}
 	}
 	return nil
 }
