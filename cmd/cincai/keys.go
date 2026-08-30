@@ -96,9 +96,10 @@ func keysCreateCmd(args []string) int {
 func keysListCmd(args []string) int {
 	fs := newFlagSet("keys list")
 	configPath := fs.String("config", "config/cincai.yaml", "path to cincai.yaml config file")
+	showAll := fs.Bool("all", false, "include revoked keys")
 	if wantsHelp(args) {
-		printCommandHelp("cincai keys list — list gateway client keys",
-			"  cincai keys list [flags]", fs)
+		printCommandHelp("cincai keys list — list gateway client keys (hides revoked unless --all)",
+			"  cincai keys list [--all] [flags]", fs)
 		return 0
 	}
 	if err := parseFlags(fs, args); err != nil {
