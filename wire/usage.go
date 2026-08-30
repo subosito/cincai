@@ -98,8 +98,15 @@ func decodeContentEncoding(contentEncoding string, body []byte) []byte {
 
 func isEventStream(body []byte) bool {
 	trim := bytes.TrimSpace(body)
-	return bytes.HasPrefix(trim, []byte("event:")) || bytes.Contains(trim, []byte("\nevent:")) ||
-		bytes.HasPrefix(trim, []byte("data:"))
+	// SSE comment keep-alives (`: cursor-open`) come before the first data:
+	// line. Treating that as JSON made streamed cursor/mow hops log no usage
+	// while non-stream JSON probes (principal dududu) still showed tokens.
+	return bytes.HasPrefix(trim, []byte("event:")) ||
+		bytes.HasPrefix(trim, []byte("data:")) ||
+		bytes.HasPrefix(trim, []byte(":")) ||
+		bytes.Contains(trim, []byte("\nevent:")) ||
+		bytes.Contains(trim, []byte("\ndata:")) ||
+		bytes.Contains(trim, []byte("\n:"))
 }
 
 func parseSSEUsage(body []byte) respUsage {

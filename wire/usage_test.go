@@ -46,6 +46,19 @@ func TestOpenAIChat_streamFinalFrame(t *testing.T) {
 	}
 }
 
+func TestOpenAIChat_streamCommentPreambleStillMeters(t *testing.T) {
+	m := usageMeterFor(catalog.WireOpenAIChat)
+	u := feed(m,
+		": cursor-open\n\n",
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n",
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":15660,\"completion_tokens\":40}}\n\n",
+		"data: [DONE]\n\n",
+	)
+	if u.InputTokens != 15660 || u.OutputTokens != 40 {
+		t.Fatalf("usage = %+v, want in=15660 out=40 (comment preamble must not hide SSE)", u)
+	}
+}
+
 func TestOpenAIResponsesAPI_inputOutputKeys(t *testing.T) {
 	m := usageMeterFor(catalog.WireOpenAIResponses)
 	u := feed(m, `{"id":"resp_1","usage":{"input_tokens":40,"output_tokens":9,"total_tokens":49}}`)
