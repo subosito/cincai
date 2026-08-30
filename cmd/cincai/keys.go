@@ -126,6 +126,9 @@ func keysListCmd(args []string) int {
 		return 1
 	}
 	for _, k := range keys {
+		if k.Revoked && !*showAll {
+			continue
+		}
 		line := fmt.Sprintf("id=%d name=%s kind=%s scopes=%v expires=%s revoked=%v",
 			k.ID, k.Name, k.Kind, k.Scopes, formatKeyExpiry(k.ExpiresAt), k.Revoked)
 		if k.BudgetMaxTokens > 0 {
